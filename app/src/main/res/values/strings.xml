@@ -1,3 +1,57 @@
 <resources>
     <string name="app_name">HA Kiosk</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Conectar con Home Assistant</string>
+    <string name="setup_base_url_label">URL del servidor</string>
+    <string name="setup_base_url_placeholder">https://192.168.1.50:8123</string>
+    <string name="setup_token_label">Token de acceso de larga duración</string>
+    <string name="setup_show_token">Mostrar token</string>
+    <string name="setup_hide_token">Ocultar token</string>
+    <string name="setup_url_error_blank">Ingresá la URL del servidor</string>
+    <string name="setup_url_error_scheme">La URL debe empezar con http:// o https://</string>
+    <string name="setup_token_error_blank">Ingresá el token de acceso</string>
+    <string name="setup_test_connection">Probar conexión</string>
+    <string name="setup_testing">Probando conexión…</string>
+    <string name="setup_test_success">Conectado. Home Assistant %1$s</string>
+    <string name="setup_test_invalid_token">Token inválido o rechazado</string>
+    <string name="setup_test_unreachable">No se pudo conectar: %1$s</string>
+    <string name="setup_save">Guardar</string>
+    <string name="setup_disconnect">Desconectar</string>
+    <string name="setup_disconnect_confirm_title">¿Desconectar este servidor?</string>
+    <string name="setup_disconnect_confirm_message">Se borrará la configuración guardada. Vas a tener que volver a ingresar la URL y el token.</string>
+    <string name="setup_disconnect_confirm_action">Desconectar</string>
+    <string name="setup_cancel">Cancelar</string>
+    <string name="setup_back">Volver</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">HA Kiosk</string>
+    <string name="dashboard_edit">Editar botones</string>
+    <string name="dashboard_settings">Configuración</string>
+    <string name="dashboard_empty_title">Todavía no hay botones</string>
+    <string name="dashboard_empty_message">Agregá entidades de Home Assistant para verlas acá.</string>
+    <string name="dashboard_empty_action">Agregar botones</string>
+    <string name="dashboard_service_call_error">No se pudo ejecutar la acción en %1$s</string>
+    <string name="dashboard_state_unavailable">No disponible</string>
+    <string name="dashboard_state_missing">Entidad no encontrada</string>
+    <string name="connection_idle">Sin conexión con Home Assistant</string>
+    <string name="connection_connecting">Conectando con Home Assistant…</string>
+    <string name="connection_auth_failed">Token rechazado: %1$s</string>
+    <string name="connection_disconnected">Desconectado: %1$s</string>
+
+    <!-- Editor -->
+    <string name="editor_title">Editar botones</string>
+    <string name="editor_current_tiles">Botones del dashboard</string>
+    <string name="editor_current_empty">No agregaste ningún botón todavía.</string>
+    <string name="editor_move_up">Subir</string>
+    <string name="editor_move_down">Bajar</string>
+    <string name="editor_remove">Quitar</string>
+    <string name="editor_label_placeholder">Nombre para mostrar (opcional)</string>
+    <string name="editor_add_entities">Agregar entidades</string>
+    <string name="editor_search_placeholder">Buscar por nombre o entity_id</string>
+    <string name="editor_filter_all">Todas</string>
+    <string name="editor_add">Agregar</string>
+    <string name="editor_already_added">Ya agregada</string>
+    <string name="editor_no_results">No se encontraron entidades</string>
+    <string name="editor_save">Guardar</string>
 </resources>

@@ -7,12 +7,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.ui.setup.SetupScreen
+import com.matiasnl.hakiosk.ui.setup.SetupViewModel
 import kotlinx.coroutines.flow.first
 
 /** Where the app lands on cold start, resolved once the first stored config value is known. */
@@ -41,8 +44,30 @@ fun HaKioskNavGraph(
                 navController = navController,
                 startDestination = if (destination == StartDestination.Setup) SetupRoute else DashboardRoute,
             ) {
-                composable<SetupRoute> {
-                    Text("Setup")
+                composable<SetupRoute> { backStackEntry ->
+                    val viewModel: SetupViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = SetupViewModel.factory(haRepository, haConfigStore),
+                    )
+                    SetupScreen(
+                        viewModel = viewModel,
+                        canGoBack = navController.previousBackStackEntry != null,
+                        onSaved = {
+                            if (navController.previousBackStackEntry != null) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(DashboardRoute) {
+                                    popUpTo(SetupRoute) { inclusive = true }
+                                }
+                            }
+                        },
+                        onDisconnected = {
+                            navController.navigate(SetupRoute) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                        onBack = { navController.popBackStack() },
+                    )
                 }
                 composable<DashboardRoute> {
                     Text("Dashboard")
