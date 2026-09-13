@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Wires dashboard persistence. Owned by the android-ui work stream. */
-class DashboardModule(@Suppress("unused") private val context: Context) {
-    val configStore: DashboardConfigStore by lazy { InMemoryDashboardConfigStore() }
+class DashboardModule(private val context: Context) {
+    val configStore: DashboardConfigStore by lazy { DataStoreDashboardConfigStore(context) }
 }
 
 class InMemoryDashboardConfigStore(initial: List<DashboardTile> = emptyList()) : DashboardConfigStore {
