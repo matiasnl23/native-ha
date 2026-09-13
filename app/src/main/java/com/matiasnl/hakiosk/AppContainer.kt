@@ -1,0 +1,18 @@
+package com.matiasnl.hakiosk
+
+import android.content.Context
+import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardModule
+import com.matiasnl.hakiosk.data.ha.HaConfigStore
+import com.matiasnl.hakiosk.data.ha.HaModule
+import com.matiasnl.hakiosk.data.ha.HaRepository
+
+/** Manual dependency container (no DI framework, keeps startup and RAM low). One instance per process. */
+class AppContainer(context: Context) {
+    private val ha = HaModule(context.applicationContext)
+    private val dashboard = DashboardModule(context.applicationContext)
+
+    val haConfigStore: HaConfigStore get() = ha.configStore
+    val haRepository: HaRepository get() = ha.repository
+    val dashboardConfigStore: DashboardConfigStore get() = dashboard.configStore
+}
