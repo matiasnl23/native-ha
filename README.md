@@ -49,9 +49,11 @@ sintaxis en archivos de build que después son difíciles de depurar sin experie
 
 ## Testing
 
-Dispositivos de prueba disponibles: un celular Android y una tablet Android 10. `adb` no está
-instalado todavía en esta máquina — hace falta para desplegar builds sin Android Studio y para el
-paso de provisioning de Device Owner (`adb shell dpm set-device-owner`).
+Dispositivos de prueba disponibles: un celular Android, una tablet Android 10 y el emulador de
+Android Studio. `adb` está en `~/Android/Sdk/platform-tools/adb` — sirve para desplegar builds sin
+Android Studio y para el paso de provisioning de Device Owner (`adb shell dpm set-device-owner`).
+
+Build y tests desde la terminal: `./gradlew assembleDebug testDebugUnitTest`.
 
 ## Agentes de este proyecto
 
