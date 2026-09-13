@@ -4,44 +4,34 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import com.matiasnl.hakiosk.ui.nav.HaKioskNavGraph
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 class MainActivity : ComponentActivity() {
+    private val container get() = (application as HaKioskApp).container
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             HAKioskTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                HaKioskNavGraph(
+                    haConfigStore = container.haConfigStore,
+                    haRepository = container.haRepository,
+                    dashboardConfigStore = container.dashboardConfigStore,
+                )
             }
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+    override fun onStart() {
+        super.onStart()
+        // The repository observes config changes itself; we only drive its lifecycle here.
+        container.haRepository.start()
+    }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    HAKioskTheme {
-        Greeting("Android")
+    override fun onStop() {
+        container.haRepository.stop()
+        super.onStop()
     }
 }
