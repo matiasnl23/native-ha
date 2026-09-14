@@ -139,6 +139,13 @@ fun HaKioskNavGraph(
                         }
 
                         override fun openCamera(entityId: String) {
+                            // launchSingleTop on the same destination keeps the top back stack entry, and with it
+                            // the CameraViewModel bound to the previous camera: leave another camera first.
+                            val current = navController.currentBackStackEntry
+                            if (current?.destination?.hasRoute<CameraRoute>() == true) {
+                                if (current.toRoute<CameraRoute>().entityId == entityId) return
+                                navController.popBackStack()
+                            }
                             navController.navigate(CameraRoute(entityId)) { launchSingleTop = true }
                         }
 
