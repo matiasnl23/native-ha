@@ -2,7 +2,6 @@ package com.matiasnl.hakiosk.ui.nav
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -16,6 +15,8 @@ import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
+import com.matiasnl.hakiosk.ui.editor.EditorScreen
+import com.matiasnl.hakiosk.ui.editor.EditorViewModel
 import com.matiasnl.hakiosk.ui.setup.SetupScreen
 import com.matiasnl.hakiosk.ui.setup.SetupViewModel
 import kotlinx.coroutines.flow.first
@@ -82,8 +83,15 @@ fun HaKioskNavGraph(
                         onOpenSettings = { navController.navigate(SetupRoute) },
                     )
                 }
-                composable<EditorRoute> {
-                    Text("Editor")
+                composable<EditorRoute> { backStackEntry ->
+                    val viewModel: EditorViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = EditorViewModel.factory(haRepository, dashboardConfigStore),
+                    )
+                    EditorScreen(
+                        viewModel = viewModel,
+                        onDone = { navController.popBackStack() },
+                    )
                 }
             }
         }
