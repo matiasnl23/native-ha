@@ -1,6 +1,7 @@
 *.iml
 .gradle/
 .kotlin/
+.claude/worktrees/
 /local.properties
 .idea/
 .DS_Store
