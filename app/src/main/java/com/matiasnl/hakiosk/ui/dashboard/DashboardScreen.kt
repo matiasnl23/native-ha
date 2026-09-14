@@ -1,6 +1,8 @@
 package com.matiasnl.hakiosk.ui.dashboard
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,9 +30,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.matiasnl.hakiosk.R
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
+import com.matiasnl.hakiosk.ui.camera.CameraThumbnailContent
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 @Composable
@@ -47,10 +52,17 @@ fun DashboardScreen(
     viewModel: DashboardViewModel,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenCamera: (entityId: String, label: String) -> Unit,
+    cameraThumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val currentOnOpenCamera by rememberUpdatedState(onOpenCamera)
+
+    LaunchedEffect(viewModel) {
+        viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label) }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.errorEvents.collect { error ->
@@ -66,6 +78,7 @@ fun DashboardScreen(
         onTileClick = viewModel::onTileClick,
         onOpenEditor = onOpenEditor,
         onOpenSettings = onOpenSettings,
+        cameraThumbnail = cameraThumbnail,
     )
 }
 
@@ -77,6 +90,7 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
+    cameraThumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -111,7 +125,11 @@ private fun DashboardContent(
                         .alpha(if (isConnected) 1f else 0.6f),
                 ) {
                     items(uiState.tiles, key = { it.entityId }) { tile ->
-                        DashboardTileCard(tile = tile, onClick = { onTileClick(tile) })
+                        if (tile.domain == "camera") {
+                            CameraTileCard(tile = tile, onClick = { onTileClick(tile) }, thumbnail = cameraThumbnail)
+                        } else {
+                            DashboardTileCard(tile = tile, onClick = { onTileClick(tile) })
+                        }
                     }
                 }
             }
@@ -232,6 +250,59 @@ private fun DashboardTileCard(
     }
 }
 
+/**
+ * Camera tile: snapshot thumbnail with the name overlaid. Same sizing as the other tiles. Unavailable
+ * or missing cameras show the placeholder only (no polling of a camera that can't answer).
+ */
+@Composable
+private fun CameraTileCard(
+    tile: DashboardTileUiState,
+    onClick: () -> Unit,
+    thumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val dimmed = tile.isMissing || tile.isUnavailable
+    Card(
+        modifier = modifier
+            .heightIn(min = 120.dp)
+            .fillMaxWidth()
+            .alpha(if (dimmed) 0.5f else 1f)
+            .then(if (tile.isActionable) Modifier.clickable(onClick = onClick) else Modifier),
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp)) {
+            if (dimmed) {
+                CameraThumbnailContent(image = null, modifier = Modifier.matchParentSize())
+            } else {
+                thumbnail(tile.entityId, Modifier.matchParentSize())
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = tile.label,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (dimmed) {
+                    Text(
+                        text = stringResource(
+                            if (tile.isMissing) R.string.dashboard_state_missing else R.string.dashboard_state_unavailable,
+                        ),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true, widthDp = 400, heightDp = 700)
 @Composable
 private fun DashboardPreview() {
@@ -273,6 +344,17 @@ private fun DashboardPreview() {
                         isActionable = true,
                     ),
                     DashboardTileUiState(
+                        entityId = "camera.front_door",
+                        label = "Front door",
+                        domain = "camera",
+                        stateValue = "idle",
+                        unitOfMeasurement = null,
+                        isOn = false,
+                        isUnavailable = false,
+                        isMissing = false,
+                        isActionable = true,
+                    ),
+                    DashboardTileUiState(
                         entityId = "light.gone",
                         label = "Removed bulb",
                         domain = "light",
@@ -290,6 +372,7 @@ private fun DashboardPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
+            cameraThumbnail = { _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -304,6 +387,7 @@ private fun DashboardEmptyPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
+            cameraThumbnail = { _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }

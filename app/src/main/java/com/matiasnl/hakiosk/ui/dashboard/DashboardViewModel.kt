@@ -24,6 +24,9 @@ private val TOGGLE_DOMAINS = setOf("light", "switch", "fan", "input_boolean", "a
 /** Domains whose tap fires `turn_on` (running a scene/script is not really "on/off"). */
 private val TURN_ON_DOMAINS = setOf("scene", "script")
 
+/** Camera tiles open the full-screen camera view instead of calling a service. */
+private const val CAMERA_DOMAIN = "camera"
+
 /** The service a tap on this domain should call, or null if the tile is display-only. */
 private fun serviceFor(domain: String): String? = when (domain) {
     in TOGGLE_DOMAINS -> "toggle"
@@ -42,7 +45,7 @@ data class DashboardTileUiState(
     val isUnavailable: Boolean,
     /** True when no matching entity is known yet (removed upstream, or state not synced). */
     val isMissing: Boolean,
-    /** False for read-only domains (sensors, binary_sensors, cameras): tapping them is a no-op. */
+    /** False for read-only domains (sensors, binary_sensors) and unavailable cameras: tapping them is a no-op. */
     val isActionable: Boolean,
 )
 
@@ -56,6 +59,9 @@ data class DashboardUiState(
      */
     val hasEntities: Boolean = false,
 )
+
+/** A camera tile was tapped: the screen should open its focus view. */
+data class OpenCameraEvent(val entityId: String, val label: String)
 
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
@@ -71,6 +77,11 @@ class DashboardViewModel(
     /** Emits when a tile's service call just failed, for the screen to show as a snackbar. */
     val errorEvents: SharedFlow<DashboardActionError> = _errorEvents.asSharedFlow()
 
+    private val _openCameraEvents = MutableSharedFlow<OpenCameraEvent>(extraBufferCapacity = 1)
+
+    /** Emits when a camera tile was tapped, for the screen to navigate to the camera view. */
+    val openCameraEvents: SharedFlow<OpenCameraEvent> = _openCameraEvents.asSharedFlow()
+
     val uiState: StateFlow<DashboardUiState> = combine(
         dashboardConfigStore.tiles,
         haRepository.entities,
@@ -84,6 +95,10 @@ class DashboardViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     fun onTileClick(tile: DashboardTileUiState) {
+        if (tile.domain == CAMERA_DOMAIN) {
+            if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label))
+            return
+        }
         val service = serviceFor(tile.domain) ?: return
         if (tile.isMissing) return
         viewModelScope.launch {
@@ -107,7 +122,8 @@ class DashboardViewModel(
             isOn = entity?.state == "on",
             isUnavailable = entity?.isUnavailable == true,
             isMissing = entity == null,
-            isActionable = entity != null && serviceFor(domain) != null,
+            isActionable = entity != null &&
+                (serviceFor(domain) != null || (domain == CAMERA_DOMAIN && !entity.isUnavailable)),
         )
     }
 

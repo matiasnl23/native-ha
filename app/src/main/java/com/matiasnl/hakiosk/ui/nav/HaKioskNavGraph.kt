@@ -16,6 +16,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.ui.camera.CameraScreen
+import com.matiasnl.hakiosk.ui.camera.CameraThumbnail
 import com.matiasnl.hakiosk.ui.camera.CameraViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
@@ -86,6 +87,13 @@ fun HaKioskNavGraph(
                         viewModel = viewModel,
                         onOpenEditor = { navController.navigate(EditorRoute) },
                         onOpenSettings = { navController.navigate(SetupRoute) },
+                        onOpenCamera = { entityId, label ->
+                            // launchSingleTop: a double tap must not stack two camera screens.
+                            navController.navigate(CameraRoute(entityId, label)) { launchSingleTop = true }
+                        },
+                        cameraThumbnail = { entityId, modifier ->
+                            CameraThumbnail(entityId = entityId, snapshots = cameraModule.snapshots, modifier = modifier)
+                        },
                     )
                 }
                 composable<CameraRoute> { backStackEntry ->

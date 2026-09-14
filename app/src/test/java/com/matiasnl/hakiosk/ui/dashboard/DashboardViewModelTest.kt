@@ -125,17 +125,40 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `tapping a camera is a no-op`() = runTest {
+    fun `tapping a camera opens its focus view without calling a service`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("camera.front_door", "idle", "Front door")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("camera.front_door")))
+        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("camera.front_door", label = "Entrada")))
         val viewModel = DashboardViewModel(repository, configStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val opened = mutableListOf<OpenCameraEvent>()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
         val tile = viewModel.uiState.value.tiles.single()
 
-        assertFalse(tile.isActionable)
+        assertTrue(tile.isActionable)
         viewModel.onTileClick(tile)
 
+        assertEquals(listOf(OpenCameraEvent("camera.front_door", "Entrada")), opened)
         assertEquals("idle", repository.entities.value.getValue("camera.front_door").state)
+    }
+
+    @Test
+    fun `unavailable or missing cameras are not actionable and do not open`() = runTest {
+        val repository = FakeHaRepository(
+            initialEntities = listOf(entity("camera.garage", "unavailable", "Garage")),
+        )
+        val configStore = InMemoryDashboardConfigStore(
+            listOf(DashboardTile("camera.garage"), DashboardTile("camera.removed")),
+        )
+        val viewModel = DashboardViewModel(repository, configStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val opened = mutableListOf<OpenCameraEvent>()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
+
+        val tiles = viewModel.uiState.value.tiles
+        assertFalse(tiles.any { it.isActionable })
+        tiles.forEach(viewModel::onTileClick)
+
+        assertTrue(opened.isEmpty())
     }
 
     @Test
