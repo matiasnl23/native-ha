@@ -11,6 +11,11 @@ data class MqttConfig(
     /** Name of the device shown in Home Assistant, e.g. "Tablet cocina". */
     val deviceName: String,
 ) {
+    /** Redacts [password] so logging a config never leaks it. */
+    override fun toString(): String =
+        "MqttConfig(host=$host, port=$port, username=$username, password=${if (password == null) "null" else "***"}, " +
+            "useTls=$useTls, deviceName=$deviceName)"
+
     companion object {
         const val DEFAULT_PORT = 1883
         const val DEFAULT_TLS_PORT = 8883
