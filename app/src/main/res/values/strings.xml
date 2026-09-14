@@ -26,7 +26,9 @@
 
     <!-- Dashboard -->
     <string name="dashboard_title">HA Kiosk</string>
-    <string name="dashboard_edit">Editar botones</string>
+    <!-- Opens the old list-based editor (EditorRoute), only reachable outside edit mode until stage 4
+         replaces it with drag & drop reorder inside edit mode itself. -->
+    <string name="dashboard_edit">Ordenar lista</string>
     <string name="dashboard_settings">Configuración</string>
     <string name="dashboard_empty_title">Todavía no hay botones</string>
     <string name="dashboard_empty_message">Agregá entidades de Home Assistant para verlas acá.</string>
@@ -110,7 +112,7 @@
     <string name="camera_retry">Reintentar</string>
 
     <!-- Editor -->
-    <string name="editor_title">Editar botones</string>
+    <string name="editor_title">Ordenar lista</string>
     <string name="editor_current_tiles">Botones del dashboard</string>
     <string name="editor_current_empty">No agregaste ningún botón todavía.</string>
     <string name="editor_move_up">Subir</string>
