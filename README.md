@@ -24,7 +24,9 @@ entidades exponer), proyectos `kiosk-satellite` y `FreeKiosk` (patrones de Devic
 
 ## Roadmap
 
-1. **MVP1** — Auth con token, cliente WebSocket, dashboard de botones configurable por el usuario.
+1. **MVP1** ✅ — Auth con token, cliente WebSocket, dashboard de botones configurable por el usuario.
+   Probado contra una instancia real de HA por https (Let's Encrypt). En curso: filtros por
+   piso/área en el editor.
 2. **MVP2** — Cámaras: vista en foco vía go2rtc/WebRTC + miniaturas MJPEG en el grid.
 3. **MVP3** — Cliente MQTT + Discovery para control remoto desde HA, y Device Owner opcional
    (modo kiosko estricto + reinicio remoto).
