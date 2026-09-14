@@ -248,7 +248,10 @@ class DashboardViewModelTest {
         assertEquals("Kitchen", light.label)
         assertTrue(light.isActionable)
         assertTrue(state.tiles[1] is SpacerTileUiState)
-        assertEquals(ViewLinkTileUiState("t-link", "view-2", "Planta alta"), state.tiles[2])
+        assertEquals(
+            ViewLinkTileUiState("t-link", "view-2", "Planta alta", rawLabel = null, targetViewName = "Planta alta"),
+            state.tiles[2],
+        )
         assertEquals(null, (state.tiles[3] as ViewLinkTileUiState).label)
 
         assertEquals(

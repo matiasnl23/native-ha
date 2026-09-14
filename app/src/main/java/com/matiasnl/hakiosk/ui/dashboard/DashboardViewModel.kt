@@ -71,6 +71,10 @@ data class DashboardTileUiState(
     val isActionable: Boolean,
     override val colSpan: Int = 1,
     override val rowSpan: Int = 1,
+    /** The tile's stored label override, or null if it falls back to [defaultLabel]. Edit-mode only. */
+    val rawLabel: String? = null,
+    /** [label] without any override applied: the entity's friendly name, or the raw entity id. Edit-mode only. */
+    val defaultLabel: String = label,
 ) : DashboardTileUi
 
 /** Empty cells that separate groups of tiles. */
@@ -87,6 +91,10 @@ data class ViewLinkTileUiState(
     val label: String?,
     override val colSpan: Int = 1,
     override val rowSpan: Int = 1,
+    /** The tile's stored label override, or null if it falls back to [targetViewName]. Edit-mode only. */
+    val rawLabel: String? = null,
+    /** The target view's own name, or null if it's unknown (a stale/missing view id). Edit-mode only. */
+    val targetViewName: String? = null,
 ) : DashboardTileUi
 
 /**
@@ -213,6 +221,8 @@ class DashboardViewModel(
                     label = content.label ?: structure.viewNames[content.targetViewId],
                     colSpan = tile.colSpan,
                     rowSpan = tile.rowSpan,
+                    rawLabel = content.label,
+                    targetViewName = structure.viewNames[content.targetViewId],
                 )
             }
         }
@@ -309,10 +319,11 @@ class DashboardViewModel(
     ): DashboardTileUiState {
         val entity = entities[entityId]
         val domain = entityId.substringBefore('.')
+        val fallbackLabel = entity?.friendlyName ?: entityId
         return DashboardTileUiState(
             id = id,
             entityId = entityId,
-            label = label ?: entity?.friendlyName ?: entityId,
+            label = label ?: fallbackLabel,
             domain = domain,
             stateValue = entity?.state,
             unitOfMeasurement = entity?.unitOfMeasurement,
@@ -323,6 +334,8 @@ class DashboardViewModel(
                 (serviceFor(domain) != null || (domain == CAMERA_DOMAIN && !entity.isUnavailable)),
             colSpan = colSpan,
             rowSpan = rowSpan,
+            rawLabel = label,
+            defaultLabel = fallbackLabel,
         )
     }
 

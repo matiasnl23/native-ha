@@ -53,6 +53,8 @@ import com.matiasnl.hakiosk.R
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid as DashboardGridSettings
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.ui.camera.CameraThumbnailContent
+import com.matiasnl.hakiosk.ui.dashboard.edit.EditTileModal
+import com.matiasnl.hakiosk.ui.dashboard.edit.PreviewTile
 import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
@@ -75,6 +77,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     val currentOnOpenCamera by rememberUpdatedState(onOpenCamera)
     var showDiscardConfirm by remember { mutableStateOf(false) }
+    var editingTileId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label) }
@@ -104,8 +107,8 @@ fun DashboardScreen(
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
         onDoneEdit = viewModel::doneEditMode,
-        // Opening the actual edit-tile/add-tile/grid-settings modals is wired in as each one is built.
-        onEditTile = {},
+        onEditTile = { tileId -> editingTileId = tileId },
+        // Opening the add-tile/grid-settings modals is wired in as each one is built.
         onAddTile = {},
         onOpenGridSettings = {},
         cameraThumbnail = cameraThumbnail,
@@ -133,7 +136,71 @@ fun DashboardScreen(
             },
         )
     }
+
+    editingTileId?.let { tileId ->
+        EditTileModalHost(
+            uiState = uiState,
+            tileId = tileId,
+            onApply = { label, colSpan, rowSpan ->
+                viewModel.setEditTileLabel(tileId, label)
+                viewModel.resizeEditTile(tileId, colSpan, rowSpan)
+                editingTileId = null
+            },
+            onRemove = {
+                viewModel.removeEditTile(tileId)
+                editingTileId = null
+            },
+            onDismiss = { editingTileId = null },
+        )
+    }
 }
+
+/** Resolves the per-tile-type title/label metadata and renders [EditTileModal], or nothing if the tile is gone. */
+@Composable
+private fun EditTileModalHost(
+    uiState: DashboardUiState,
+    tileId: String,
+    onApply: (label: String?, colSpan: Int, rowSpan: Int) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val editableTiles = uiState.tiles.filterNot { it is AddTileUiState }
+    val index = editableTiles.indexOfFirst { it.id == tileId }
+    val tile = editableTiles.getOrNull(index) ?: return
+    val previewTiles = editableTiles.map { t ->
+        PreviewTile(colSpan = t.colSpan, rowSpan = t.rowSpan, isSpacer = t is SpacerTileUiState)
+    }
+    val viewLinkFallback = stringResource(R.string.dashboard_view_link_fallback)
+    val (title, showLabelField, initialLabel, labelPlaceholder) = when (tile) {
+        is SpacerTileUiState -> EditModalMeta(stringResource(R.string.dashboard_spacer_label), false, "", "")
+        is ViewLinkTileUiState -> {
+            val targetName = tile.targetViewName ?: viewLinkFallback
+            EditModalMeta(stringResource(R.string.edit_tile_link_title, targetName), true, tile.rawLabel.orEmpty(), targetName)
+        }
+        is DashboardTileUiState -> EditModalMeta(tile.label, true, tile.rawLabel.orEmpty(), tile.defaultLabel)
+        is AddTileUiState -> return
+    }
+
+    EditTileModal(
+        title = title,
+        showLabelField = showLabelField,
+        initialLabel = initialLabel,
+        labelPlaceholder = labelPlaceholder,
+        grid = uiState.grid,
+        tiles = previewTiles,
+        editingIndex = index,
+        onApply = onApply,
+        onRemove = onRemove,
+        onDismiss = onDismiss,
+    )
+}
+
+private data class EditModalMeta(
+    val title: String,
+    val showLabelField: Boolean,
+    val initialLabel: String,
+    val labelPlaceholder: String,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -48,6 +48,17 @@
     <string name="dashboard_spacer_label">Espacio</string>
     <string name="dashboard_add_tile">Agregar botón</string>
     <string name="connection_idle">Sin conexión con Home Assistant</string>
+
+    <!-- Edit tile modal -->
+    <string name="edit_tile_label">Nombre para mostrar</string>
+    <string name="edit_tile_size">Tamaño</string>
+    <string name="edit_tile_width">Ancho</string>
+    <string name="edit_tile_height">Alto</string>
+    <string name="edit_tile_preview">Vista previa</string>
+    <string name="edit_tile_remove">Quitar</string>
+    <string name="edit_tile_cancel">Cancelar</string>
+    <string name="edit_tile_apply">Aplicar</string>
+    <string name="edit_tile_link_title">Link a %1$s</string>
     <string name="connection_connecting">Conectando con Home Assistant…</string>
     <string name="connection_auth_failed">Token rechazado: %1$s</string>
     <string name="connection_auth_failed_action">Configurar</string>
