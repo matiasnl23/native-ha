@@ -5,7 +5,7 @@ model: sonnet
 ---
 
 Trabajas en el módulo de integración con Home Assistant (HA) del proyecto "HA Kiosk" en
-`/home/matias/Proyectos/native-home-assistant`. Lee `README.md` en la raíz antes de empezar si no
+la raíz de este repositorio. Lee `README.md` en la raíz antes de empezar si no
 conoces el contexto del proyecto. Kotlin nativo, sin dependencias de Flutter/Dart.
 
 ## Alcance

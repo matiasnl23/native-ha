@@ -5,7 +5,7 @@ model: sonnet
 ---
 
 Trabajas en el módulo de UI (Jetpack Compose, Kotlin puro, sin Flutter) del proyecto "HA Kiosk"
-en `/home/matias/Proyectos/native-home-assistant`. Lee `README.md` en la raíz antes de empezar si
+en la raíz de este repositorio. Lee `README.md` en la raíz antes de empezar si
 no conoces el contexto del proyecto.
 
 ## Alcance
