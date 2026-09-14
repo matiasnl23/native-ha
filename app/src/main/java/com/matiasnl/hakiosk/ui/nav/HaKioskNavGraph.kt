@@ -14,6 +14,8 @@ import androidx.navigation.compose.rememberNavController
 import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
+import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
 import com.matiasnl.hakiosk.ui.setup.SetupScreen
 import com.matiasnl.hakiosk.ui.setup.SetupViewModel
 import kotlinx.coroutines.flow.first
@@ -69,8 +71,16 @@ fun HaKioskNavGraph(
                         onBack = { navController.popBackStack() },
                     )
                 }
-                composable<DashboardRoute> {
-                    Text("Dashboard")
+                composable<DashboardRoute> { backStackEntry ->
+                    val viewModel: DashboardViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = DashboardViewModel.factory(haRepository, dashboardConfigStore),
+                    )
+                    DashboardScreen(
+                        viewModel = viewModel,
+                        onOpenEditor = { navController.navigate(EditorRoute) },
+                        onOpenSettings = { navController.navigate(SetupRoute) },
+                    )
                 }
                 composable<EditorRoute> {
                     Text("Editor")
