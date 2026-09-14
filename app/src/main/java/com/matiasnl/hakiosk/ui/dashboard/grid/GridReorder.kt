@@ -6,7 +6,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,10 +17,13 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.util.fastAny
+import androidx.compose.ui.util.fastFirstOrNull
 import androidx.compose.ui.util.fastForEach
 
 /** Duration of the slide of tiles to their new placement after a re-pack, and of the drop settle. */
@@ -316,7 +318,7 @@ internal suspend fun <T> PointerInputScope.detectReorderGestures(state: GridReor
         val down = awaitFirstDown(requireUnconsumed = false)
         val index = state.draggableIndexAt(down.position.x, down.position.y)
         if (index < 0) return@awaitEachGesture
-        val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+        val longPress = awaitLongPressInInitialPass(down) ?: return@awaitEachGesture
         if (!state.start(index, longPress.position.x, longPress.position.y)) return@awaitEachGesture
         val pointerId = longPress.id
         try {
@@ -330,11 +332,41 @@ internal suspend fun <T> PointerInputScope.detectReorderGestures(state: GridReor
                 }
                 val change = tracked
                 if (change == null || !change.pressed || otherPressed) break
-                if (change.positionChanged()) state.moveTo(change.position.x, change.position.y)
+                // Every change was consumed above and positionChanged() is false for consumed changes,
+                // so compare positions directly.
+                if (change.position != change.previousPosition) state.moveTo(change.position.x, change.position.y)
             }
         } finally {
             state.end()
         }
+    }
+}
+
+/**
+ * Waits for a long press on [down] in the Initial pass, before the cells see the events. Edit-mode
+ * cells are `clickable`, which consumes the pointer in the Main pass; `awaitLongPressOrCancellation`
+ * gives up as soon as anything is consumed, so with it a drag could never start.
+ *
+ * Returns the latest change once the long-press timeout passes with the pointer still down and within
+ * touch slop, or null if it lifts, moves past slop (a scroll) or a second finger lands first. Consumes
+ * nothing.
+ */
+private suspend fun AwaitPointerEventScope.awaitLongPressInInitialPass(down: PointerInputChange): PointerInputChange? {
+    var latest = down
+    try {
+        withTimeout(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.fastFirstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) return@withTimeout
+                if (event.changes.fastAny { it.id != down.id && it.pressed }) return@withTimeout
+                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeout
+                latest = change
+            }
+        }
+        return null
+    } catch (_: PointerEventTimeoutCancellationException) {
+        return latest
     }
 }
 
