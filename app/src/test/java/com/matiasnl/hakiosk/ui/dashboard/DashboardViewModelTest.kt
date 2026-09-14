@@ -8,7 +8,10 @@ import com.matiasnl.hakiosk.data.dashboard.FakeDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.setGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import org.junit.Assert.assertSame
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
@@ -83,10 +86,32 @@ private fun layoutWithTiles(vararg tiles: Pair<String, String?>): DashboardLayou
 
 private fun layoutWithTile(entityId: String, label: String? = null) = layoutWithTiles(entityId to label)
 
+/** A store whose layout hasn't loaded yet (never emits); records whether anything was written. */
+private class NotYetLoadedLayoutStore : DashboardLayoutStore {
+    var updates = 0
+    override val layout: Flow<DashboardLayout> = emptyFlow()
+    override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {
+        updates++
+    }
+}
+
 class DashboardViewModelTest {
 
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun `edit mode cannot start before the stored layout loads, so Listo can't overwrite it`() = runTest {
+        val store = NotYetLoadedLayoutStore()
+        val viewModel = DashboardViewModel(FakeHaRepository(initialEntities = emptyList()), store)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.enterEditMode()
+        viewModel.doneEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(0, store.updates)
+    }
 
     @Test
     fun `tiles join configured order with live entity state`() = runTest {

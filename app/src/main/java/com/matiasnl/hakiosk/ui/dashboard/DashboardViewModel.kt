@@ -11,7 +11,6 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
-import com.matiasnl.hakiosk.data.dashboard.defaultDashboardLayout
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
@@ -184,10 +183,11 @@ class DashboardViewModel(
 
     /**
      * Latest known persisted layout, kept eagerly so [enterEditMode] can snapshot it even before the
-     * screen has subscribed to [uiState].
+     * screen has subscribed to [uiState]. Null until the store's first emission: snapshotting a
+     * placeholder instead would let Listo overwrite the user's real layout with an empty one.
      */
-    private val layoutState: StateFlow<DashboardLayout> = dashboardLayoutStore.layout
-        .stateIn(viewModelScope, SharingStarted.Eagerly, defaultDashboardLayout())
+    private val layoutState: StateFlow<DashboardLayout?> = dashboardLayoutStore.layout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** Ids of the working copy's current-view entity tiles, for the add-tile modal's [EntityPicker]. */
     private val editingEntityIds = editController.state
@@ -239,9 +239,12 @@ class DashboardViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
-    /** Snapshots the first view of the current layout into a working copy and enters edit mode. */
+    /**
+     * Snapshots the first view of the current layout into a working copy and enters edit mode. No-op
+     * until the stored layout has loaded.
+     */
     fun enterEditMode() {
-        val layout = layoutState.value
+        val layout = layoutState.value ?: return
         val viewId = layout.views.firstOrNull()?.id ?: return
         editController.enter(layout, viewId)
     }
