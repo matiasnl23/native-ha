@@ -40,6 +40,10 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         // The repository observes config changes itself; we only drive its lifecycle here.
         container.haRepository.start()
+        // Idempotent and a no-op without a stored broker config. Never stopped in onStop: remote
+        // control must keep working while the activity is stopped (a foreground service keeps it
+        // alive); saving or clearing the broker config also calls start() again (harmless).
+        container.mqttRemoteControl.start()
     }
 
     override fun onStop() {
