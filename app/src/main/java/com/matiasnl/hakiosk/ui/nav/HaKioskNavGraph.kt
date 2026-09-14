@@ -24,6 +24,8 @@ import com.matiasnl.hakiosk.ui.editor.EditorScreen
 import com.matiasnl.hakiosk.ui.editor.EditorViewModel
 import com.matiasnl.hakiosk.ui.setup.SetupScreen
 import com.matiasnl.hakiosk.ui.setup.SetupViewModel
+import com.matiasnl.hakiosk.ui.viewsettings.ViewSettingsScreen
+import com.matiasnl.hakiosk.ui.viewsettings.ViewSettingsViewModel
 import kotlinx.coroutines.flow.first
 
 /** Where the app lands on cold start, resolved once the first stored config value is known. */
@@ -87,6 +89,9 @@ fun HaKioskNavGraph(
                         viewModel = viewModel,
                         onOpenEditor = { navController.navigate(EditorRoute) },
                         onOpenSettings = { navController.navigate(SetupRoute) },
+                        onOpenViewSettings = { viewId ->
+                            navController.navigate(ViewSettingsRoute(viewId)) { launchSingleTop = true }
+                        },
                         onOpenCamera = { entityId, label ->
                             // launchSingleTop: a double tap must not stack two camera screens.
                             navController.navigate(CameraRoute(entityId, label)) { launchSingleTop = true }
@@ -118,6 +123,20 @@ fun HaKioskNavGraph(
                         viewModel = viewModel,
                         snapshots = cameraModule.snapshots,
                         onClose = { navController.popBackStack() },
+                    )
+                }
+                composable<ViewSettingsRoute> { backStackEntry ->
+                    val route = backStackEntry.toRoute<ViewSettingsRoute>()
+                    val viewModel: ViewSettingsViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = ViewSettingsViewModel.factory(route.viewId, dashboardLayoutStore),
+                    )
+                    ViewSettingsScreen(
+                        viewModel = viewModel,
+                        // Guard against popping twice (Done and back racing): only pop while we're on top.
+                        onClose = {
+                            if (navController.currentBackStackEntry?.id == backStackEntry.id) navController.popBackStack()
+                        },
                     )
                 }
                 composable<EditorRoute> { backStackEntry ->

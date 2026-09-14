@@ -14,6 +14,10 @@ object DashboardRoute
 @Serializable
 data class CameraRoute(val entityId: String, val label: String? = null)
 
+/** Grid settings (visible columns/rows) of one dashboard view. */
+@Serializable
+data class ViewSettingsRoute(val viewId: String)
+
 /** Dashboard tile editor: pick which entities show up and in what order. */
 @Serializable
 object EditorRoute

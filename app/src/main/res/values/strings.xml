@@ -42,6 +42,26 @@
     <string name="connection_auth_failed_action">Configurar</string>
     <string name="connection_disconnected">Desconectado: %1$s. Reintentando…</string>
 
+    <!-- View settings -->
+    <string name="dashboard_view_settings">Vista</string>
+    <string name="view_settings_title">Ajustes de la vista</string>
+    <string name="view_settings_title_named">Ajustes de la vista: %1$s</string>
+    <string name="view_settings_columns">Columnas</string>
+    <string name="view_settings_rows">Filas visibles</string>
+    <string name="view_settings_decrease">Quitar una: %1$s</string>
+    <string name="view_settings_increase">Agregar una: %1$s</string>
+    <string name="view_settings_help">Define cuántas celdas entran en pantalla sin desplazarse. Si los botones ocupan más filas, el dashboard se desplaza verticalmente.</string>
+    <string name="view_settings_preview">Vista previa</string>
+    <string name="view_settings_preview_description">Vista previa de la grilla de %1$d columnas por %2$d filas</string>
+    <plurals name="view_settings_preview_scroll">
+        <item quantity="one">%1$d fila más con desplazamiento</item>
+        <item quantity="many">%1$d filas más con desplazamiento</item>
+        <item quantity="other">%1$d filas más con desplazamiento</item>
+    </plurals>
+    <string name="view_settings_not_found">Esta vista ya no existe.</string>
+    <string name="view_settings_done">Listo</string>
+    <string name="view_settings_cancel">Cancelar</string>
+
     <!-- Camera -->
     <string name="camera_thumbnail_description">Imagen de la cámara</string>
     <string name="camera_thumbnail_placeholder">Sin imagen</string>

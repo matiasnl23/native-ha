@@ -55,6 +55,7 @@ fun DashboardScreen(
     viewModel: DashboardViewModel,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenViewSettings: (viewId: String) -> Unit,
     onOpenCamera: (entityId: String, label: String) -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
@@ -81,6 +82,7 @@ fun DashboardScreen(
         onTileClick = viewModel::onTileClick,
         onOpenEditor = onOpenEditor,
         onOpenSettings = onOpenSettings,
+        onOpenViewSettings = onOpenViewSettings,
         cameraThumbnail = cameraThumbnail,
     )
 }
@@ -93,6 +95,7 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenViewSettings: (viewId: String) -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
     Scaffold(
@@ -100,6 +103,11 @@ private fun DashboardContent(
             TopAppBar(
                 title = { Text(stringResource(R.string.dashboard_title)) },
                 actions = {
+                    uiState.viewId?.let { viewId ->
+                        TextButton(onClick = { onOpenViewSettings(viewId) }) {
+                            Text(stringResource(R.string.dashboard_view_settings))
+                        }
+                    }
                     TextButton(onClick = onOpenEditor) { Text(stringResource(R.string.dashboard_edit)) }
                     TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.dashboard_settings)) }
                 },
@@ -406,6 +414,7 @@ private fun DashboardPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
+            onOpenViewSettings = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -421,6 +430,7 @@ private fun DashboardEmptyPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
+            onOpenViewSettings = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
