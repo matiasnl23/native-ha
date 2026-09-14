@@ -52,6 +52,9 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    // Prebuilt Google libwebrtc (org.webrtc.*) for the camera focus view. No abiFilters on purpose:
+    // the target tablets include 32-bit armeabi-v7a devices.
+    implementation(libs.webrtc.android)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
