@@ -339,6 +339,8 @@ class DashboardViewModel(
      * No-op until the stored layout has loaded.
      */
     fun enterEditMode() {
+        // Re-entering would re-snapshot the stored layout and silently drop the working copy.
+        if (editController.state.value.isEditing) return
         val layout = layoutState.value ?: return
         val viewId = resolveViewId(layout, selection.value?.viewId) ?: return
         editController.enter(layout, viewId)

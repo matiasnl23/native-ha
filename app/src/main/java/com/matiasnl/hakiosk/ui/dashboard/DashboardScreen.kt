@@ -2,6 +2,7 @@ package com.matiasnl.hakiosk.ui.dashboard
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -30,11 +34,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -113,6 +120,7 @@ fun DashboardScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onTileClick = viewModel::onTileClick,
+        onPageSettled = viewModel::onPageSettled,
         onOpenSettings = onOpenSettings,
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
@@ -252,6 +260,7 @@ private fun DashboardContent(
     uiState: DashboardUiState,
     snackbarHostState: SnackbarHostState,
     onTileClick: (DashboardTileUiState) -> Unit,
+    onPageSettled: (viewId: String) -> Unit,
     onOpenSettings: () -> Unit,
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
@@ -262,16 +271,21 @@ private fun DashboardContent(
     onOpenGridSettings: () -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
+    // The pager is only built once the layout and the last opened view are known, so it starts on
+    // the right page instead of flashing the first one.
+    val pagerState = if (uiState.isLoaded && uiState.pages.isNotEmpty()) {
+        val latestPages by rememberUpdatedState(uiState.pages)
+        rememberPagerState(initialPage = uiState.currentPage) { latestPages.size }.also { state ->
+            PagerSync(state, uiState.currentPage, pages = { latestPages }, onPageSettled = onPageSettled)
+        }
+    } else {
+        null
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            if (uiState.isEditing) R.string.dashboard_edit_mode_title else R.string.dashboard_title,
-                        ),
-                    )
-                },
+                title = { DashboardTitle(uiState, pagerState) },
                 actions = {
                     if (uiState.isEditing) {
                         TextButton(onClick = onRequestCancelEdit) { Text(stringResource(R.string.dashboard_edit_cancel)) }
@@ -294,52 +308,168 @@ private fun DashboardContent(
                     onOpenSettings = onOpenSettings,
                 )
             }
+            if (pagerState == null) return@Column
 
-            if (uiState.tiles.isEmpty()) {
-                EmptyDashboard(onAddTiles = onEnterEdit, modifier = Modifier.fillMaxSize())
-            } else {
-                val isConnected = uiState.connectionState is HaConnectionState.Connected
-                DashboardGrid(
-                    items = uiState.tiles,
-                    itemKey = { it.id },
-                    packing = uiState.packing,
-                    visibleRows = uiState.grid.rows,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(if (isConnected || uiState.isEditing) 1f else 0.6f),
-                    // Real tiles (spacers and view links included) are draggable; the trailing "＋" isn't.
-                    draggableCount = if (uiState.isEditing) uiState.tiles.count { it !is AddTileUiState } else 0,
-                    onMove = if (uiState.isEditing) onMoveTile else null,
-                ) { tile, placement, isVisible ->
-                    if (uiState.isEditing) {
-                        EditModeTileCell(
-                            tile = tile,
-                            placement = placement,
-                            isVisible = isVisible,
-                            onEditTile = onEditTile,
-                            onAddTile = onAddTile,
-                            cameraThumbnail = cameraThumbnail,
-                        )
-                    } else {
-                        when (tile) {
-                            is DashboardTileUiState -> if (tile.domain == "camera") {
-                                CameraTileCard(
-                                    tile = tile,
-                                    placement = placement,
-                                    isVisible = isVisible,
-                                    onClick = { onTileClick(tile) },
-                                    thumbnail = cameraThumbnail,
-                                )
-                            } else {
-                                DashboardTileCard(tile = tile, placement = placement, onClick = { onTileClick(tile) })
-                            }
-                            is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
-                            is ViewLinkTileUiState -> ViewLinkTileCard(tile = tile, placement = placement)
-                            is AddTileUiState -> Box(Modifier) // Never appears outside edit mode.
-                        }
-                    }
-                }
+            val isConnected = uiState.connectionState is HaConnectionState.Connected
+            // One scroll position per view, kept while its page is out of composition.
+            val scrollStates = remember { HashMap<String, ScrollState>() }
+            HorizontalPager(
+                state = pagerState,
+                // Swiping is off for the whole edit session: a horizontal move would otherwise be
+                // grabbed by the pager before the grid's long press lifts a tile.
+                userScrollEnabled = !uiState.isEditing,
+                key = { index -> uiState.pages.getOrNull(index)?.viewId ?: index },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .alpha(if (isConnected || uiState.isEditing) 1f else 0.6f),
+            ) { index ->
+                val page = uiState.pages.getOrNull(index) ?: return@HorizontalPager
+                // Read inside cells only, so a settle recomposes camera cells rather than the page.
+                val isSettled = remember(pagerState, index) { derivedStateOf { pagerState.settledPage == index } }
+                DashboardPage(
+                    page = page,
+                    isEditing = uiState.isEditing,
+                    isEditedPage = uiState.isEditing && index == uiState.currentPage,
+                    isSettled = isSettled,
+                    scrollState = scrollStates.getOrPut(page.viewId) { ScrollState(0) },
+                    onTileClick = onTileClick,
+                    onEnterEdit = onEnterEdit,
+                    onMoveTile = onMoveTile,
+                    onEditTile = onEditTile,
+                    onAddTile = onAddTile,
+                    cameraThumbnail = cameraThumbnail,
+                )
             }
+            if (uiState.pages.size > 1 && !uiState.isEditing) {
+                PageIndicator(pagerState = pagerState, pageCount = uiState.pages.size)
+            }
+        }
+    }
+}
+
+/**
+ * Keeps the pager and the ViewModel's current page in step: scrolls (animated) to [currentPage]
+ * whenever it changes, and reports every settled page back through [onPageSettled]. A user swipe
+ * reports its settle, which makes the ViewModel's current page match, so the two never fight.
+ */
+@Composable
+private fun PagerSync(
+    pagerState: PagerState,
+    currentPage: Int,
+    pages: () -> List<DashboardPageUi>,
+    onPageSettled: (viewId: String) -> Unit,
+) {
+    val latestOnPageSettled by rememberUpdatedState(onPageSettled)
+    LaunchedEffect(pagerState, currentPage) {
+        if (currentPage !in 0 until pagerState.pageCount) return@LaunchedEffect
+        if (pagerState.settledPage != currentPage || pagerState.targetPage != currentPage) {
+            pagerState.animateScrollToPage(currentPage)
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { page ->
+            pages().getOrNull(page)?.let { latestOnPageSettled(it.viewId) }
+        }
+    }
+}
+
+/** "Editando…" while editing; the current view's name with 2+ views; the app name otherwise. */
+@Composable
+private fun DashboardTitle(uiState: DashboardUiState, pagerState: PagerState?) {
+    val text = when {
+        uiState.isEditing -> stringResource(R.string.dashboard_edit_mode_title)
+        pagerState != null && uiState.pages.size > 1 ->
+            uiState.pages.getOrNull(pagerState.currentPage)?.name ?: stringResource(R.string.dashboard_title)
+        else -> stringResource(R.string.dashboard_title)
+    }
+    Text(text = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+/** One view: its grid, or the empty-dashboard hint when it has no tiles (outside edit mode). */
+@Composable
+private fun DashboardPage(
+    page: DashboardPageUi,
+    isEditing: Boolean,
+    isEditedPage: Boolean,
+    isSettled: State<Boolean>,
+    scrollState: ScrollState,
+    onTileClick: (DashboardTileUiState) -> Unit,
+    onEnterEdit: () -> Unit,
+    onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
+    onEditTile: (tileId: String) -> Unit,
+    onAddTile: () -> Unit,
+    cameraThumbnail: CameraThumbnailSlot,
+) {
+    if (page.tiles.isEmpty()) {
+        // While editing only the edited page has content (its "＋"); a neighbour shown mid-scroll stays blank.
+        if (!isEditing) EmptyDashboard(onAddTiles = onEnterEdit, modifier = Modifier.fillMaxSize())
+        return
+    }
+    DashboardGrid(
+        items = page.tiles,
+        itemKey = { it.id },
+        packing = page.packing,
+        visibleRows = page.grid.rows,
+        modifier = Modifier.fillMaxSize(),
+        scrollState = scrollState,
+        // Real tiles (spacers and view links included) are draggable; the trailing "＋" isn't.
+        draggableCount = if (isEditedPage) page.tiles.count { it !is AddTileUiState } else 0,
+        onMove = if (isEditedPage) onMoveTile else null,
+    ) { tile, placement, isVisible ->
+        // Cameras poll only when on screen AND on the settled page: never on a neighbour during or after a swipe.
+        val isActive = isVisible && isSettled.value
+        if (isEditing) {
+            EditModeTileCell(
+                tile = tile,
+                placement = placement,
+                isVisible = isActive,
+                onEditTile = onEditTile,
+                onAddTile = onAddTile,
+                cameraThumbnail = cameraThumbnail,
+            )
+        } else {
+            when (tile) {
+                is DashboardTileUiState -> if (tile.domain == "camera") {
+                    CameraTileCard(
+                        tile = tile,
+                        placement = placement,
+                        isVisible = isActive,
+                        onClick = { onTileClick(tile) },
+                        thumbnail = cameraThumbnail,
+                    )
+                } else {
+                    DashboardTileCard(tile = tile, placement = placement, onClick = { onTileClick(tile) })
+                }
+                is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
+                is ViewLinkTileUiState -> ViewLinkTileCard(tile = tile, placement = placement)
+                is AddTileUiState -> Box(Modifier) // Never appears outside edit mode.
+            }
+        }
+    }
+}
+
+/** Dots under the pager, the current one highlighted. Only shown with 2+ views. */
+@Composable
+private fun PageIndicator(pagerState: PagerState, pageCount: Int, modifier: Modifier = Modifier) {
+    val current = pagerState.currentPage
+    val description = stringResource(R.string.dashboard_page_indicator, current + 1, pageCount)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .semantics { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+    ) {
+        repeat(pageCount) { index ->
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        shape = CircleShape,
+                    ),
+            )
         }
     }
 }
@@ -753,6 +883,50 @@ private fun DashboardPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onPageSettled = {},
+            onOpenSettings = {},
+            onEnterEdit = {},
+            onRequestCancelEdit = {},
+            onDoneEdit = {},
+            onMoveTile = { _, _ -> },
+            onEditTile = {},
+            onAddTile = {},
+            onOpenGridSettings = {},
+            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 900, heightDp = 600)
+@Composable
+private fun DashboardMultiViewPreview() {
+    val grid = DashboardGridSettings(columns = 4, rows = 3)
+    val pages = listOf(
+        previewPage("main", "Principal", grid, listOf(previewEntity("light.living_room", "Living room", "on", isOn = true))),
+        previewPage(
+            "upstairs",
+            "Planta alta",
+            grid,
+            listOf(
+                previewEntity("light.bedroom", "Dormitorio", "off", colSpan = 2),
+                previewEntity("sensor.upstairs_temperature", "Temperatura", "21", unit = "°C"),
+                ViewLinkTileUiState("back", targetViewId = "main", label = "Principal", targetViewName = "Principal"),
+                ViewLinkTileUiState("stale", targetViewId = "gone", label = null),
+            ),
+        ),
+        previewPage("garden", "Jardín", grid, emptyList()),
+    )
+    HAKioskTheme {
+        DashboardContent(
+            uiState = DashboardUiState(
+                isLoaded = true,
+                pages = pages,
+                currentPage = 1,
+                connectionState = HaConnectionState.Connected,
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onTileClick = {},
+            onPageSettled = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -771,9 +945,14 @@ private fun DashboardPreview() {
 private fun DashboardEmptyPreview() {
     HAKioskTheme {
         DashboardContent(
-            uiState = DashboardUiState(connectionState = HaConnectionState.Disconnected("timeout", 5_000)),
+            uiState = DashboardUiState(
+                isLoaded = true,
+                pages = listOf(DashboardPageUi(viewId = "main", name = "Principal")),
+                connectionState = HaConnectionState.Disconnected("timeout", 5_000),
+            ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onPageSettled = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -811,6 +990,7 @@ private fun DashboardEditModePreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onPageSettled = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
