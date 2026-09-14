@@ -76,6 +76,20 @@ class RemoteControlPublisherTest {
     }
 
     @Test
+    fun retainedCommandsAreIgnoredSoTheyAreNotReplayedOnReconnect() = runTest {
+        connect(publisher())
+
+        messaging.emit(topic("main_view/set"), "PRESS", retained = true)
+        messaging.emit(topic("command"), """{"command":"main_view"}""", retained = true)
+        runCurrent()
+        assertTrue(received.isEmpty())
+
+        messaging.emit(topic("main_view/set"), "PRESS")
+        runCurrent()
+        assertEquals(listOf<RemoteCommand>(RemoteCommand.ShowMainView), received)
+    }
+
+    @Test
     fun reconnectingRepublishesEverything() = runTest {
         val publisher = publisher()
         connect(publisher)

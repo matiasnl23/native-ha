@@ -55,8 +55,8 @@ class FakeMqttMessaging(deviceId: String = "0123456789abcdef") : MqttMessaging {
     }
 
     /** Delivers a message to every subscription whose filter matches [topic], as the broker would. */
-    fun emit(topic: String, payload: String) {
-        val message = MqttMessage(topic, payload.toByteArray(Charsets.UTF_8), retained = false)
+    fun emit(topic: String, payload: String, retained: Boolean = false) {
+        val message = MqttMessage(topic, payload.toByteArray(Charsets.UTF_8), retained = retained)
         subscriptions.filter { (filter, _) -> MqttTopics.matches(filter, topic) }
             .forEach { (_, flow) -> check(flow.tryEmit(message)) { "Subscriber buffer full for $topic" } }
     }

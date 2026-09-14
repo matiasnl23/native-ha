@@ -213,6 +213,12 @@ class RemoteControlPublisher(
     private suspend fun handleEntityCommands() {
         val topics = messaging.topics()
         messaging.subscribe(topics.topic("+/set")).collect { message ->
+            // A command published retained (e.g. an automation with retain: true) would be redelivered
+            // and re-executed on every reconnect; commands are one-shot, so ignore retained ones.
+            if (message.retained) {
+                log("Ignored retained command")
+                return@collect
+            }
             val objectId = entityObjectId(topics, message.topic) ?: return@collect
             val entity = DeviceEntityKey.entries.firstOrNull { it.objectId == objectId } ?: return@collect
             toCommand(entity, message.payloadText.trim())?.let(bridge::dispatch)
@@ -246,6 +252,10 @@ class RemoteControlPublisher(
     private suspend fun handleJsonCommands() {
         val topics = messaging.topics()
         messaging.subscribe(topics.topic("command")).collect { message ->
+            if (message.retained) {
+                log("Ignored retained JSON command")
+                return@collect
+            }
             val command = JsonCommandParser.parse(message.payloadText)
             if (command == null) {
                 log("Ignored malformed or unknown JSON command")
