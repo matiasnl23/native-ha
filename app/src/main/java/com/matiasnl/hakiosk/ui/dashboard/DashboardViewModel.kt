@@ -22,6 +22,8 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
+import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileAction
 import com.matiasnl.hakiosk.ui.picker.EntityPickerState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
@@ -40,15 +42,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Domains whose tap toggles the entity. */
-private val TOGGLE_DOMAINS = setOf("light", "switch", "fan", "input_boolean", "automation")
-
-/** Domains whose tap fires `turn_on` (running a scene/script is not really "on/off"). */
-private val TURN_ON_DOMAINS = setOf("scene", "script")
-
-/** Camera tiles open the full-screen camera view instead of calling a service. */
-private const val CAMERA_DOMAIN = "camera"
-
 /** Quiet time after the last page settle before the last opened view is written to disk. */
 const val LAST_VIEW_SAVE_DEBOUNCE_MILLIS = 1_500L
 
@@ -57,11 +50,11 @@ private const val MILLIS_PER_MINUTE = 60_000L
 /** Upper bound on how long Listo waits for the store to echo the persisted layout back. */
 private const val PERSIST_ECHO_TIMEOUT_MILLIS = 2_000L
 
-/** The service a tap on this domain should call, or null if the tile is display-only. */
-private fun serviceFor(domain: String): String? = when (domain) {
-    in TOGGLE_DOMAINS -> "toggle"
-    in TURN_ON_DOMAINS -> "turn_on"
-    else -> null
+/** The service a tap action calls, or null if it doesn't call one. */
+private fun serviceFor(action: TileAction): String? = when (action) {
+    TileAction.TOGGLE -> "toggle"
+    TileAction.TURN_ON -> "turn_on"
+    TileAction.NONE, TileAction.OPEN_CAMERA -> null
 }
 
 /** One cell-occupying item of the dashboard grid, in the view's tile order. Spans are as stored (unclipped). */
@@ -446,11 +439,12 @@ class DashboardViewModel(
 
     fun onTileClick(tile: DashboardTileUiState) {
         if (uiState.value.isEditing) return
-        if (tile.domain == CAMERA_DOMAIN) {
+        val action = DomainTileBehaviors.forDomain(tile.domain).tapAction
+        if (action == TileAction.OPEN_CAMERA) {
             if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label))
             return
         }
-        val service = serviceFor(tile.domain) ?: return
+        val service = serviceFor(action) ?: return
         if (tile.isMissing) return
         viewModelScope.launch {
             val result = haRepository.callService(tile.domain, service, tile.entityId)
@@ -568,6 +562,7 @@ class DashboardViewModel(
         val entity = entities[entityId]
         val domain = entityId.substringBefore('.')
         val fallbackLabel = entity?.friendlyName ?: entityId
+        val action = DomainTileBehaviors.forDomain(domain).tapAction
         return DashboardTileUiState(
             id = id,
             entityId = entityId,
@@ -579,7 +574,7 @@ class DashboardViewModel(
             isUnavailable = entity?.isUnavailable == true,
             isMissing = entity == null,
             isActionable = entity != null &&
-                (serviceFor(domain) != null || (domain == CAMERA_DOMAIN && !entity.isUnavailable)),
+                (serviceFor(action) != null || (action == TileAction.OPEN_CAMERA && !entity.isUnavailable)),
             colSpan = colSpan,
             rowSpan = rowSpan,
             rawLabel = label,
