@@ -24,10 +24,22 @@ class MqttTopics(val deviceId: String) {
 
     val clientId: String = "$ROOT-$deviceId"
 
+    /**
+     * Per-component MQTT Discovery config topic for one entity of this device:
+     * `homeassistant/<component>/<deviceId>/<objectId>/config`. Using [deviceId] as the topic's
+     * `node_id` (instead of `object_id`) lets several entities share one device while keeping a
+     * flat, predictable topic per entity; see `docs/MVP3-MQTT.md`.
+     */
+    fun discoveryConfigTopic(component: String, objectId: String): String =
+        "$DISCOVERY_PREFIX/$component/$deviceId/$objectId/config"
+
     companion object {
         const val ROOT = "hakiosk"
         const val PAYLOAD_ONLINE = "online"
         const val PAYLOAD_OFFLINE = "offline"
+
+        /** Home Assistant's default MQTT Discovery prefix. */
+        const val DISCOVERY_PREFIX = "homeassistant"
 
         /**
          * MQTT 3.1.1 topic filter matching (section 4.7): `+` matches one level, a trailing `#`
