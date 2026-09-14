@@ -61,6 +61,14 @@ layout del dashboard) y controlan su casa.
 - **Nunca** accionar entidades reales (luces, alarma, switches, escenas) desde pruebas automáticas o
   manuales sin pedido del usuario. Las funciones que actúan sobre la casa se validan con tests JVM y
   `@Preview`s, y se le pide al usuario que las pruebe.
+- Tests instrumentados (gestos reales, Compose UI): **nunca** `./gradlew connectedAndroidTest`, que
+  desinstala la app al terminar y borra la configuración del usuario. Compilar con
+  `./gradlew assembleDebug assembleDebugAndroidTest`, instalar ambos APKs con `adb install -r` (el de
+  tests con `-r -t`) y correr con
+  `adb shell am instrument -w -e class <Clase> com.matiasnl.hakiosk.test/androidx.test.runner.AndroidJUnitRunner`.
+  Los tests deben componer solo lo que prueban (p. ej. la grilla aislada), nunca el dashboard real.
+- Los gestos (drag & drop, long-press) se verifican con tests instrumentados: los tests JVM de la
+  lógica pura no detectan errores de manejo de eventos.
 - Si tras agregar un permiso la app falla con `socket failed: EPERM` en el emulador, es un problema
   conocido del emulador: desinstalar y reinstalar (avisando que se pierde la configuración).
 
