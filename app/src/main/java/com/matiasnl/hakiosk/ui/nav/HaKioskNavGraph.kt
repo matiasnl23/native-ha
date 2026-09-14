@@ -12,7 +12,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.matiasnl.hakiosk.camera.CameraModule
-import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.ui.camera.CameraScreen
@@ -38,7 +38,7 @@ private enum class StartDestination { Loading, Setup, Dashboard }
 fun HaKioskNavGraph(
     haConfigStore: HaConfigStore,
     haRepository: HaRepository,
-    dashboardConfigStore: DashboardConfigStore,
+    dashboardLayoutStore: DashboardLayoutStore,
     cameraModule: CameraModule,
 ) {
     val startDestination by produceState(initialValue = StartDestination.Loading, haConfigStore) {
@@ -81,7 +81,7 @@ fun HaKioskNavGraph(
                 composable<DashboardRoute> { backStackEntry ->
                     val viewModel: DashboardViewModel = viewModel(
                         viewModelStoreOwner = backStackEntry,
-                        factory = DashboardViewModel.factory(haRepository, dashboardConfigStore),
+                        factory = DashboardViewModel.factory(haRepository, dashboardLayoutStore),
                     )
                     DashboardScreen(
                         viewModel = viewModel,
@@ -118,7 +118,7 @@ fun HaKioskNavGraph(
                 composable<EditorRoute> { backStackEntry ->
                     val viewModel: EditorViewModel = viewModel(
                         viewModelStoreOwner = backStackEntry,
-                        factory = EditorViewModel.factory(haRepository, dashboardConfigStore),
+                        factory = EditorViewModel.factory(haRepository, dashboardLayoutStore),
                     )
                     EditorScreen(
                         viewModel = viewModel,

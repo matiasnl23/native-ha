@@ -1,7 +1,10 @@
 package com.matiasnl.hakiosk.ui.dashboard
 
-import com.matiasnl.hakiosk.data.dashboard.DashboardTile
-import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardConfigStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaConnectionTestResult
 import com.matiasnl.hakiosk.data.ha.HaEntity
@@ -60,6 +63,19 @@ private fun entity(id: String, state: String, name: String, unit: String? = null
     lastChanged = "2026-01-01T00:00:00+00:00",
 )
 
+/** A single-view layout whose first view has the given entity tiles, in order. */
+private fun layoutWithTiles(vararg tiles: Pair<String, String?>): DashboardLayout = DashboardLayout(
+    views = listOf(
+        DashboardView(
+            id = "view-1",
+            name = "Principal",
+            tiles = tiles.map { (entityId, label) -> newDashboardTile(TileContent.Entity(entityId, label)) },
+        ),
+    ),
+)
+
+private fun layoutWithTile(entityId: String, label: String? = null) = layoutWithTiles(entityId to label)
+
 class DashboardViewModelTest {
 
     @get:Rule
@@ -73,10 +89,10 @@ class DashboardViewModelTest {
                 entity("sensor.temp", "18.5", "Temp", unit = "°C"),
             ),
         )
-        val configStore = InMemoryDashboardConfigStore(
-            listOf(DashboardTile("sensor.temp"), DashboardTile("light.kitchen", label = "Cocina")),
+        val layoutStore = InMemoryDashboardLayoutStore(
+            layoutWithTiles("sensor.temp" to null, "light.kitchen" to "Cocina"),
         )
-        val viewModel = DashboardViewModel(repository, configStore)
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         val tiles = viewModel.uiState.value.tiles
@@ -88,8 +104,8 @@ class DashboardViewModelTest {
     @Test
     fun `missing entity is flagged and not actionable`() = runTest {
         val repository = FakeHaRepository(initialEntities = emptyList())
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.gone")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.gone"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         val tile = viewModel.uiState.value.tiles.single()
@@ -101,8 +117,8 @@ class DashboardViewModelTest {
     @Test
     fun `tapping a light toggles it`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.kitchen")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         viewModel.onTileClick(viewModel.uiState.value.tiles.single())
@@ -113,8 +129,8 @@ class DashboardViewModelTest {
     @Test
     fun `tapping a sensor is a no-op`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("sensor.temp", "18.5", "Temp")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("sensor.temp")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("sensor.temp"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val tile = viewModel.uiState.value.tiles.single()
 
@@ -127,8 +143,8 @@ class DashboardViewModelTest {
     @Test
     fun `tapping a camera opens its focus view without calling a service`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("camera.front_door", "idle", "Front door")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("camera.front_door", label = "Entrada")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("camera.front_door", label = "Entrada"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val opened = mutableListOf<OpenCameraEvent>()
         backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
@@ -146,10 +162,10 @@ class DashboardViewModelTest {
         val repository = FakeHaRepository(
             initialEntities = listOf(entity("camera.garage", "unavailable", "Garage")),
         )
-        val configStore = InMemoryDashboardConfigStore(
-            listOf(DashboardTile("camera.garage"), DashboardTile("camera.removed")),
+        val layoutStore = InMemoryDashboardLayoutStore(
+            layoutWithTiles("camera.garage" to null, "camera.removed" to null),
         )
-        val viewModel = DashboardViewModel(repository, configStore)
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val opened = mutableListOf<OpenCameraEvent>()
         backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
@@ -164,8 +180,8 @@ class DashboardViewModelTest {
     @Test
     fun `tapping a scene calls turn_on`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("scene.movie_night", "scening", "Movie night")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("scene.movie_night")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("scene.movie_night"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val tile = viewModel.uiState.value.tiles.single()
 
@@ -178,8 +194,8 @@ class DashboardViewModelTest {
     @Test
     fun `failed service call emits an error event with the tile label and repository message`() = runTest {
         val repository = FailingHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.kitchen", label = "Cocina")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen", label = "Cocina"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val tile = viewModel.uiState.value.tiles.single()
 
@@ -196,8 +212,8 @@ class DashboardViewModelTest {
     @Test
     fun `hasEntities stays true after entities were synced even if the state goes idle`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "on", "Kitchen")))
-        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.kitchen")))
-        val viewModel = DashboardViewModel(repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen"))
+        val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         repository.start()

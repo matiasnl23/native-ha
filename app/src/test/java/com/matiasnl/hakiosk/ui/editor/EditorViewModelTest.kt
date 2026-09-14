@@ -1,8 +1,12 @@
 package com.matiasnl.hakiosk.ui.editor
 
-import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
-import com.matiasnl.hakiosk.data.dashboard.DashboardTile
-import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardConfigStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.defaultDashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRegistry
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
@@ -29,19 +33,30 @@ private fun entity(id: String, name: String) = HaEntity(
     lastChanged = "2026-01-01T00:00:00+00:00",
 )
 
+/** A single-view layout, "Principal", whose tiles are entity tiles for [entityIds] in order. */
+private fun layoutWithTiles(vararg entityIds: String): DashboardLayout = DashboardLayout(
+    views = listOf(
+        DashboardView(
+            id = "view-1",
+            name = "Principal",
+            tiles = entityIds.map { newDashboardTile(TileContent.Entity(it)) },
+        ),
+    ),
+)
+
 /**
- * [DashboardConfigStore] whose [tiles] flow only emits once [release] is called, to reproduce the
+ * [DashboardLayoutStore] whose [layout] flow only emits once [release] is called, to reproduce the
  * race between the async initial load in [EditorViewModel]'s init and edits made in the meantime.
  */
-private class GatedDashboardConfigStore(private val stored: List<DashboardTile>) : DashboardConfigStore {
+private class GatedDashboardLayoutStore(private val stored: DashboardLayout) : DashboardLayoutStore {
     private val gate = CompletableDeferred<Unit>()
 
-    override val tiles: Flow<List<DashboardTile>> = flow {
+    override val layout: Flow<DashboardLayout> = flow {
         gate.await()
         emit(stored)
     }
 
-    override suspend fun setTiles(tiles: List<DashboardTile>) {}
+    override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {}
 
     fun release() {
         gate.complete(Unit)
@@ -55,12 +70,12 @@ class EditorViewModelTest {
 
     private fun TestScopeViewModel(
         entities: List<HaEntity>,
-        initialTiles: List<DashboardTile> = emptyList(),
-    ): Triple<EditorViewModel, FakeHaRepository, InMemoryDashboardConfigStore> {
+        initialLayout: DashboardLayout = defaultDashboardLayout(),
+    ): Triple<EditorViewModel, FakeHaRepository, InMemoryDashboardLayoutStore> {
         val repository = FakeHaRepository(initialEntities = entities)
-        val configStore = InMemoryDashboardConfigStore(initialTiles)
-        val viewModel = EditorViewModel(repository, configStore)
-        return Triple(viewModel, repository, configStore)
+        val layoutStore = InMemoryDashboardLayoutStore(initialLayout)
+        val viewModel = EditorViewModel(repository, layoutStore)
+        return Triple(viewModel, repository, layoutStore)
     }
 
     private fun manyEntities(count: Int) = (0 until count).map { entity("light.e%03d".format(it), "Entity %03d".format(it)) }
@@ -104,7 +119,7 @@ class EditorViewModelTest {
     fun `loads existing tiles and lists all entities as available`() = runTest {
         val (viewModel, _, _) = TestScopeViewModel(
             entities = listOf(entity("light.kitchen", "Kitchen"), entity("light.living_room", "Living room")),
-            initialTiles = listOf(DashboardTile("light.living_room")),
+            initialLayout = layoutWithTiles("light.living_room"),
         )
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
@@ -130,7 +145,7 @@ class EditorViewModelTest {
     fun `remove drops the tile`() = runTest {
         val (viewModel, _, _) = TestScopeViewModel(
             entities = listOf(entity("light.kitchen", "Kitchen")),
-            initialTiles = listOf(DashboardTile("light.kitchen")),
+            initialLayout = layoutWithTiles("light.kitchen"),
         )
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
@@ -143,7 +158,7 @@ class EditorViewModelTest {
     fun `move up and down reorder tiles`() = runTest {
         val (viewModel, _, _) = TestScopeViewModel(
             entities = listOf(entity("light.a", "A"), entity("light.b", "B"), entity("light.c", "C")),
-            initialTiles = listOf(DashboardTile("light.a"), DashboardTile("light.b"), DashboardTile("light.c")),
+            initialLayout = layoutWithTiles("light.a", "light.b", "light.c"),
         )
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
@@ -162,7 +177,7 @@ class EditorViewModelTest {
     fun `label override is stored and blank clears it`() = runTest {
         val (viewModel, _, _) = TestScopeViewModel(
             entities = listOf(entity("light.kitchen", "Kitchen")),
-            initialTiles = listOf(DashboardTile("light.kitchen")),
+            initialLayout = layoutWithTiles("light.kitchen"),
         )
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
@@ -199,7 +214,7 @@ class EditorViewModelTest {
 
     @Test
     fun `save persists the working tile list`() = runTest {
-        val (viewModel, _, configStore) = TestScopeViewModel(entities = listOf(entity("light.kitchen", "Kitchen")))
+        val (viewModel, _, layoutStore) = TestScopeViewModel(entities = listOf(entity("light.kitchen", "Kitchen")))
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         viewModel.addTile("light.kitchen")
@@ -207,19 +222,48 @@ class EditorViewModelTest {
         viewModel.save { saved = true }
 
         assertTrue(saved)
-        assertEquals(listOf("light.kitchen"), configStore.tiles.value.map { it.entityId })
+        val savedEntityIds = layoutStore.layout.value.views.single().tiles
+            .mapNotNull { (it.content as? TileContent.Entity)?.entityId }
+        assertEquals(listOf("light.kitchen"), savedEntityIds)
+    }
+
+    @Test
+    fun `save preserves other views and non-entity tiles untouched`() = runTest {
+        val otherView = DashboardView(id = "view-2", name = "Bedroom")
+        val principal = DashboardView(
+            id = "view-1",
+            name = "Principal",
+            tiles = listOf(newDashboardTile(TileContent.Spacer)),
+        )
+        val (viewModel, _, layoutStore) = TestScopeViewModel(
+            entities = listOf(entity("light.kitchen", "Kitchen")),
+            initialLayout = DashboardLayout(views = listOf(principal, otherView)),
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.addTile("light.kitchen")
+        viewModel.save {}
+
+        val saved = layoutStore.layout.value
+        assertEquals(listOf("view-1", "view-2"), saved.views.map { it.id })
+        assertEquals("Bedroom", saved.views[1].name)
+        assertEquals(TileContent.Spacer, saved.views[0].tiles.first().content)
+        assertEquals(
+            "light.kitchen",
+            (saved.views[0].tiles.last().content as TileContent.Entity).entityId,
+        )
     }
 
     @Test
     fun `isLoaded is false until the stored tiles arrive`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "Kitchen")))
-        val configStore = GatedDashboardConfigStore(emptyList())
-        val viewModel = EditorViewModel(repository, configStore)
+        val layoutStore = GatedDashboardLayoutStore(defaultDashboardLayout())
+        val viewModel = EditorViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         assertFalse(viewModel.uiState.value.isLoaded)
 
-        configStore.release()
+        layoutStore.release()
 
         assertTrue(viewModel.uiState.value.isLoaded)
     }
@@ -229,15 +273,15 @@ class EditorViewModelTest {
         val repository = FakeHaRepository(
             initialEntities = listOf(entity("light.kitchen", "Kitchen"), entity("light.living_room", "Living room")),
         )
-        val configStore = GatedDashboardConfigStore(listOf(DashboardTile("light.living_room")))
-        val viewModel = EditorViewModel(repository, configStore)
+        val layoutStore = GatedDashboardLayoutStore(layoutWithTiles("light.living_room"))
+        val viewModel = EditorViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         // The user adds a tile before the stored ("light.living_room") list has loaded.
         viewModel.addTile("light.kitchen")
         assertEquals(listOf("light.kitchen"), viewModel.uiState.value.currentTiles.map { it.entityId })
 
-        configStore.release()
+        layoutStore.release()
 
         // Neither the pre-load edit nor the previously stored tile was lost.
         assertEquals(
@@ -251,17 +295,15 @@ class EditorViewModelTest {
         val repository = FakeHaRepository(
             initialEntities = listOf(entity("light.kitchen", "Kitchen"), entity("light.living_room", "Living room")),
         )
-        val configStore = GatedDashboardConfigStore(
-            listOf(DashboardTile("light.living_room"), DashboardTile("light.kitchen")),
-        )
-        val viewModel = EditorViewModel(repository, configStore)
+        val layoutStore = GatedDashboardLayoutStore(layoutWithTiles("light.living_room", "light.kitchen"))
+        val viewModel = EditorViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         // Removing a tile that isn't loaded yet queues the edit; nothing to remove yet.
         viewModel.removeTile("light.kitchen")
         assertTrue(viewModel.uiState.value.currentTiles.isEmpty())
 
-        configStore.release()
+        layoutStore.release()
 
         assertEquals(listOf("light.living_room"), viewModel.uiState.value.currentTiles.map { it.entityId })
     }
@@ -269,7 +311,7 @@ class EditorViewModelTest {
     // sampleRegistry(): floors "ground" (level 0) and "first" (level 1); areas entrance/kitchen/
     // living_room on "ground" and bedroom (empty) on "first"; sensor.outdoor_temperature unassigned.
     private fun editorWithSampleRegistry(): EditorViewModel =
-        EditorViewModel(FakeHaRepository(), InMemoryDashboardConfigStore())
+        EditorViewModel(FakeHaRepository(), InMemoryDashboardLayoutStore())
 
     @Test
     fun `floor filter matches entities whose area is on that floor`() = runTest {
@@ -411,7 +453,7 @@ class EditorViewModelTest {
     @Test
     fun `floors and areas are empty when the registry has none`() = runTest {
         val repository = FakeHaRepository(initialRegistry = HaRegistry())
-        val viewModel = EditorViewModel(repository, InMemoryDashboardConfigStore())
+        val viewModel = EditorViewModel(repository, InMemoryDashboardLayoutStore())
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
         assertTrue(viewModel.uiState.value.floors.isEmpty())

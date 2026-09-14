@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
                 HaKioskNavGraph(
                     haConfigStore = container.haConfigStore,
                     haRepository = container.haRepository,
-                    dashboardConfigStore = container.dashboardConfigStore,
+                    dashboardLayoutStore = container.dashboardLayoutStore,
                     cameraModule = container.camera,
                 )
             }

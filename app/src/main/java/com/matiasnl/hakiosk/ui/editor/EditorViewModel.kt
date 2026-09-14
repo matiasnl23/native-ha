@@ -4,8 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
-import com.matiasnl.hakiosk.data.dashboard.DashboardTile
+import com.matiasnl.hakiosk.data.dashboard.DashboardIdProvider
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
+import com.matiasnl.hakiosk.data.dashboard.addTile
+import com.matiasnl.hakiosk.data.dashboard.defaultDashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.moveTile
+import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
+import com.matiasnl.hakiosk.data.dashboard.removeTile
+import com.matiasnl.hakiosk.data.dashboard.updateTile
 import com.matiasnl.hakiosk.data.ha.HaArea
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaFloor
@@ -64,8 +74,10 @@ data class EditorUiState(
 )
 
 /**
- * Drives the dashboard editor: a working copy of the tile list (not written to
- * [dashboardConfigStore] until [save]) joined with a search index of every known entity.
+ * Drives the dashboard editor: a working copy of the whole layout (not written to
+ * [dashboardLayoutStore] until [save]) joined with a search index of every known entity. Only the
+ * first view's entity tiles are editable for now; other views and non-entity tiles (spacers, view
+ * links) are carried through [save] untouched, since nothing creates them yet.
  *
  * Real installs have thousands of entities whose states change every second, so the editor works on
  * a lightweight [EntityIndex] that is only rebuilt when entities are added, removed or renamed, and
@@ -73,10 +85,11 @@ data class EditorUiState(
  */
 class EditorViewModel(
     private val haRepository: HaRepository,
-    private val dashboardConfigStore: DashboardConfigStore,
+    private val dashboardLayoutStore: DashboardLayoutStore,
+    private val idProvider: DashboardIdProvider = UuidDashboardIdProvider,
 ) : ViewModel() {
 
-    private val _workingTiles = MutableStateFlow<List<DashboardTile>>(emptyList())
+    private val _workingLayout = MutableStateFlow(defaultDashboardLayout(idProvider))
     private val _query = MutableStateFlow("")
     private val _domainFilter = MutableStateFlow<String?>(null)
     private val _floorFilter = MutableStateFlow<String?>(null)
@@ -84,16 +97,18 @@ class EditorViewModel(
     private val _isLoaded = MutableStateFlow(false)
 
     /**
-     * Edits applied to [_workingTiles] before [dashboardConfigStore] finished its initial load.
-     * Replayed on top of the loaded list once it arrives so they aren't lost, without discarding
-     * whatever was already stored on disk.
+     * Edits applied to [_workingLayout] before [dashboardLayoutStore] finished its initial load.
+     * Replayed on top of the loaded layout once it arrives so they aren't lost, without discarding
+     * whatever was already stored on disk. Each edit re-resolves the first view's id from whichever
+     * layout it's applied to, since the placeholder [defaultDashboardLayout] above and the real
+     * loaded layout have different view ids.
      */
-    private val pendingEditsBeforeLoad = mutableListOf<(List<DashboardTile>) -> List<DashboardTile>>()
+    private val pendingEditsBeforeLoad = mutableListOf<(DashboardLayout) -> DashboardLayout>()
 
     init {
         viewModelScope.launch {
-            val loaded = dashboardConfigStore.tiles.first()
-            _workingTiles.value = pendingEditsBeforeLoad.fold(loaded) { tiles, edit -> edit(tiles) }
+            val loaded = dashboardLayoutStore.layout.first()
+            _workingLayout.value = pendingEditsBeforeLoad.fold(loaded) { layout, edit -> edit(layout) }
             pendingEditsBeforeLoad.clear()
             _isLoaded.value = true
         }
@@ -133,13 +148,13 @@ class EditorViewModel(
         .distinctUntilChanged { old, new -> old === new }
 
     val uiState: StateFlow<EditorUiState> = combine(
-        _workingTiles,
+        _workingLayout,
         entityIndex,
         filters,
         registryLookup,
         _isLoaded,
-    ) { tiles, index, filters, lookup, isLoaded ->
-        buildUiState(tiles, index, filters, lookup, isLoaded)
+    ) { layout, index, filters, lookup, isLoaded ->
+        buildUiState(layout, index, filters, lookup, isLoaded)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EditorUiState())
 
     /** Reuses the previous index (same instance) unless the entity set or a friendly name changed. */
@@ -154,28 +169,30 @@ class EditorViewModel(
         return EntityIndex(items).also { lastIndex = it }
     }
 
-    /** Applies [edit] to the working tiles now, and again once a pending initial load arrives. */
-    private fun editWorkingTiles(edit: (List<DashboardTile>) -> List<DashboardTile>) {
-        _workingTiles.update(edit)
+    /** Applies [edit] to the working layout now, and again once a pending initial load arrives. */
+    private fun editWorkingLayout(edit: (DashboardLayout) -> DashboardLayout) {
+        _workingLayout.update(edit)
         if (!_isLoaded.value) {
             pendingEditsBeforeLoad += edit
         }
     }
 
     private fun buildUiState(
-        tiles: List<DashboardTile>,
+        layout: DashboardLayout,
         index: EntityIndex,
         filters: Filters,
         lookup: RegistryLookup,
         isLoaded: Boolean,
     ): EditorUiState {
         val registry = lookup.registry
-        val tileIds = tiles.mapTo(HashSet()) { it.entityId }
-        val currentTiles = tiles.map { tile ->
+        val entityTiles = layout.views.firstOrNull()?.tiles.orEmpty()
+            .mapNotNull { tile -> (tile.content as? TileContent.Entity) }
+        val tileIds = entityTiles.mapTo(HashSet()) { it.entityId }
+        val currentTiles = entityTiles.map { entity ->
             EditorTileRow(
-                entityId = tile.entityId,
-                friendlyName = index.byId[tile.entityId]?.friendlyName ?: tile.entityId,
-                label = tile.label,
+                entityId = entity.entityId,
+                friendlyName = index.byId[entity.entityId]?.friendlyName ?: entity.entityId,
+                label = entity.label,
             )
         }
         val query = filters.query.trim().lowercase()
@@ -259,45 +276,66 @@ class EditorViewModel(
         _areaFilter.value = areaId
     }
 
+    /** Appends a new entity tile to the first view, unless that entity is already a tile there. */
     fun addTile(entityId: String) {
-        editWorkingTiles { tiles ->
-            if (tiles.any { it.entityId == entityId }) tiles else tiles + DashboardTile(entityId)
+        editWorkingLayout { layout ->
+            val view = layout.views.firstOrNull() ?: return@editWorkingLayout layout
+            val alreadyAdded = view.tiles.any { (it.content as? TileContent.Entity)?.entityId == entityId }
+            if (alreadyAdded) return@editWorkingLayout layout
+            layout.addTile(view.id, newDashboardTile(TileContent.Entity(entityId), idProvider = idProvider))
         }
     }
 
     fun removeTile(entityId: String) {
-        editWorkingTiles { tiles -> tiles.filterNot { it.entityId == entityId } }
+        editFirstViewEntityTile(entityId) { layout, view, tileId -> layout.removeTile(view.id, tileId) }
     }
 
     fun setLabel(entityId: String, label: String) {
-        val trimmed = label.trim()
-        editWorkingTiles { tiles ->
-            tiles.map { if (it.entityId == entityId) it.copy(label = trimmed.ifEmpty { null }) else it }
+        val trimmed = label.trim().ifEmpty { null }
+        editFirstViewEntityTile(entityId) { layout, view, tileId ->
+            layout.updateTile(view.id, tileId) { tile ->
+                when (val content = tile.content) {
+                    is TileContent.Entity -> tile.copy(content = content.copy(label = trimmed))
+                    else -> tile
+                }
+            }
         }
     }
 
     fun moveUp(entityId: String) {
-        editWorkingTiles { tiles -> tiles.moved(entityId, -1) }
+        moveEntityTile(entityId, delta = -1)
     }
 
     fun moveDown(entityId: String) {
-        editWorkingTiles { tiles -> tiles.moved(entityId, +1) }
+        moveEntityTile(entityId, delta = +1)
     }
 
-    private fun List<DashboardTile>.moved(entityId: String, delta: Int): List<DashboardTile> {
-        val index = indexOfFirst { it.entityId == entityId }
-        val target = index + delta
-        if (index < 0 || target < 0 || target >= size) return this
-        return toMutableList().apply {
-            val item = removeAt(index)
-            add(target, item)
+    private fun moveEntityTile(entityId: String, delta: Int) {
+        editWorkingLayout { layout ->
+            val view = layout.views.firstOrNull() ?: return@editWorkingLayout layout
+            val index = view.tiles.indexOfFirst { (it.content as? TileContent.Entity)?.entityId == entityId }
+            if (index < 0) return@editWorkingLayout layout
+            layout.moveTile(view.id, index, index + delta)
         }
     }
 
-    /** Persists the working tile list and invokes [onSaved]. */
+    /** Finds the tile for [entityId] in the first view (if any) and applies [edit] to the layout. */
+    private fun editFirstViewEntityTile(
+        entityId: String,
+        edit: (layout: DashboardLayout, view: DashboardView, tileId: String) -> DashboardLayout,
+    ) {
+        editWorkingLayout { layout ->
+            val view = layout.views.firstOrNull() ?: return@editWorkingLayout layout
+            val tileId = view.tiles.firstOrNull { (it.content as? TileContent.Entity)?.entityId == entityId }?.id
+                ?: return@editWorkingLayout layout
+            edit(layout, view, tileId)
+        }
+    }
+
+    /** Persists the working layout and invokes [onSaved]. */
     fun save(onSaved: () -> Unit) {
         viewModelScope.launch {
-            dashboardConfigStore.setTiles(_workingTiles.value)
+            dashboardLayoutStore.update { _workingLayout.value }
             onSaved()
         }
     }
@@ -309,8 +347,8 @@ class EditorViewModel(
         /** Rows shown in the "add" list; the rest is reached by narrowing the search or filters. */
         const val MAX_AVAILABLE_RESULTS = 50
 
-        fun factory(haRepository: HaRepository, dashboardConfigStore: DashboardConfigStore) = viewModelFactory {
-            initializer { EditorViewModel(haRepository, dashboardConfigStore) }
+        fun factory(haRepository: HaRepository, dashboardLayoutStore: DashboardLayoutStore) = viewModelFactory {
+            initializer { EditorViewModel(haRepository, dashboardLayoutStore) }
         }
     }
 }

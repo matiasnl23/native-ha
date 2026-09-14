@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
-import com.matiasnl.hakiosk.data.dashboard.DashboardTile
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
@@ -66,10 +66,14 @@ data class OpenCameraEvent(val entityId: String, val label: String)
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
 
-/** Joins the configured tiles with live entity state and maps taps to Home Assistant service calls. */
+/**
+ * Joins the first view's entity tiles with live entity state and maps taps to Home Assistant service
+ * calls. Spacer and view-link tiles are ignored for now: none exist yet (nothing creates them before
+ * a later stage), and only entity tiles render as buttons today.
+ */
 class DashboardViewModel(
     private val haRepository: HaRepository,
-    dashboardConfigStore: DashboardConfigStore,
+    dashboardLayoutStore: DashboardLayoutStore,
 ) : ViewModel() {
 
     private val _errorEvents = MutableSharedFlow<DashboardActionError>(extraBufferCapacity = 1)
@@ -83,12 +87,14 @@ class DashboardViewModel(
     val openCameraEvents: SharedFlow<OpenCameraEvent> = _openCameraEvents.asSharedFlow()
 
     val uiState: StateFlow<DashboardUiState> = combine(
-        dashboardConfigStore.tiles,
+        dashboardLayoutStore.layout,
         haRepository.entities,
         haRepository.connectionState,
-    ) { tiles, entities, connectionState ->
+    ) { layout, entities, connectionState ->
+        val entityTiles = layout.views.firstOrNull()?.tiles.orEmpty()
+            .mapNotNull { tile -> (tile.content as? TileContent.Entity)?.toUiState(entities) }
         DashboardUiState(
-            tiles = tiles.map { it.toUiState(entities) },
+            tiles = entityTiles,
             connectionState = connectionState,
             hasEntities = entities.isNotEmpty(),
         )
@@ -110,7 +116,7 @@ class DashboardViewModel(
         }
     }
 
-    private fun DashboardTile.toUiState(entities: Map<String, HaEntity>): DashboardTileUiState {
+    private fun TileContent.Entity.toUiState(entities: Map<String, HaEntity>): DashboardTileUiState {
         val entity = entities[entityId]
         val domain = entityId.substringBefore('.')
         return DashboardTileUiState(
@@ -128,8 +134,8 @@ class DashboardViewModel(
     }
 
     companion object {
-        fun factory(haRepository: HaRepository, dashboardConfigStore: DashboardConfigStore) = viewModelFactory {
-            initializer { DashboardViewModel(haRepository, dashboardConfigStore) }
+        fun factory(haRepository: HaRepository, dashboardLayoutStore: DashboardLayoutStore) = viewModelFactory {
+            initializer { DashboardViewModel(haRepository, dashboardLayoutStore) }
         }
     }
 }
