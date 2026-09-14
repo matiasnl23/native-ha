@@ -20,8 +20,6 @@ import com.matiasnl.hakiosk.ui.camera.CameraThumbnail
 import com.matiasnl.hakiosk.ui.camera.CameraViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
-import com.matiasnl.hakiosk.ui.editor.EditorScreen
-import com.matiasnl.hakiosk.ui.editor.EditorViewModel
 import com.matiasnl.hakiosk.ui.setup.SetupScreen
 import com.matiasnl.hakiosk.ui.setup.SetupViewModel
 import kotlinx.coroutines.flow.first
@@ -85,7 +83,6 @@ fun HaKioskNavGraph(
                     )
                     DashboardScreen(
                         viewModel = viewModel,
-                        onOpenEditor = { navController.navigate(EditorRoute) },
                         onOpenSettings = { navController.navigate(SetupRoute) },
                         onOpenCamera = { entityId, label ->
                             // launchSingleTop: a double tap must not stack two camera screens.
@@ -118,16 +115,6 @@ fun HaKioskNavGraph(
                         viewModel = viewModel,
                         snapshots = cameraModule.snapshots,
                         onClose = { navController.popBackStack() },
-                    )
-                }
-                composable<EditorRoute> { backStackEntry ->
-                    val viewModel: EditorViewModel = viewModel(
-                        viewModelStoreOwner = backStackEntry,
-                        factory = EditorViewModel.factory(haRepository, dashboardLayoutStore),
-                    )
-                    EditorScreen(
-                        viewModel = viewModel,
-                        onDone = { navController.popBackStack() },
                     )
                 }
             }

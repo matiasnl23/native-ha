@@ -26,9 +26,6 @@
 
     <!-- Dashboard -->
     <string name="dashboard_title">HA Kiosk</string>
-    <!-- Opens the old list-based editor (EditorRoute), only reachable outside edit mode until stage 4
-         replaces it with drag & drop reorder inside edit mode itself. -->
-    <string name="dashboard_edit">Ordenar lista</string>
     <string name="dashboard_settings">Configuración</string>
     <string name="dashboard_empty_title">Todavía no hay botones</string>
     <string name="dashboard_empty_message">Agregá entidades de Home Assistant para verlas acá.</string>
@@ -111,15 +108,7 @@
     <string name="camera_snapshot_error">No se pudo obtener la imagen: %1$s</string>
     <string name="camera_retry">Reintentar</string>
 
-    <!-- Editor -->
-    <string name="editor_title">Ordenar lista</string>
-    <string name="editor_current_tiles">Botones del dashboard</string>
-    <string name="editor_current_empty">No agregaste ningún botón todavía.</string>
-    <string name="editor_move_up">Subir</string>
-    <string name="editor_move_down">Bajar</string>
-    <string name="editor_remove">Quitar</string>
-    <string name="editor_label_placeholder">Nombre para mostrar (opcional)</string>
-    <string name="editor_add_entities">Agregar entidades</string>
+    <!-- Entity picker (shared search/filter list; ids keep the old editor_ prefix) -->
     <string name="editor_search_placeholder">Buscar por nombre o entity_id</string>
     <string name="editor_filter_all">Todas</string>
     <string name="editor_filter_all_floors">Todos los pisos</string>
@@ -131,5 +120,4 @@
     <string name="editor_already_added">Ya agregada</string>
     <string name="editor_no_results">No se encontraron entidades</string>
     <string name="editor_results_truncated">Mostrando %1$d de %2$d entidades. Usá la búsqueda o los filtros para afinar.</string>
-    <string name="editor_save">Guardar</string>
 </resources>

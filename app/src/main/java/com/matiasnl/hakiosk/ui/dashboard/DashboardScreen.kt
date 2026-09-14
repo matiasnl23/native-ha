@@ -68,7 +68,6 @@ typealias CameraThumbnailSlot = @Composable (entityId: String, active: Boolean, 
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
-    onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCamera: (entityId: String, label: String) -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
@@ -114,7 +113,6 @@ fun DashboardScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onTileClick = viewModel::onTileClick,
-        onOpenEditor = onOpenEditor,
         onOpenSettings = onOpenSettings,
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
@@ -254,7 +252,6 @@ private fun DashboardContent(
     uiState: DashboardUiState,
     snackbarHostState: SnackbarHostState,
     onTileClick: (DashboardTileUiState) -> Unit,
-    onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
@@ -282,7 +279,6 @@ private fun DashboardContent(
                         TextButton(onClick = onDoneEdit) { Text(stringResource(R.string.dashboard_edit_done)) }
                     } else {
                         TextButton(onClick = onEnterEdit) { Text(stringResource(R.string.dashboard_edit_mode)) }
-                        TextButton(onClick = onOpenEditor) { Text(stringResource(R.string.dashboard_edit)) }
                         TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.dashboard_settings)) }
                     }
                 },
@@ -300,7 +296,7 @@ private fun DashboardContent(
             }
 
             if (uiState.tiles.isEmpty()) {
-                EmptyDashboard(onOpenEditor = onOpenEditor, modifier = Modifier.fillMaxSize())
+                EmptyDashboard(onAddTiles = onEnterEdit, modifier = Modifier.fillMaxSize())
             } else {
                 val isConnected = uiState.connectionState is HaConnectionState.Connected
                 DashboardGrid(
@@ -389,8 +385,9 @@ private fun ConnectionBanner(
     }
 }
 
+/** Shown outside edit mode when the view has no tiles; its action enters edit mode, where "＋" adds tiles. */
 @Composable
-private fun EmptyDashboard(onOpenEditor: () -> Unit, modifier: Modifier = Modifier) {
+private fun EmptyDashboard(onAddTiles: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
@@ -407,7 +404,7 @@ private fun EmptyDashboard(onOpenEditor: () -> Unit, modifier: Modifier = Modifi
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = onOpenEditor, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onAddTiles, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.dashboard_empty_action))
         }
     }
@@ -749,7 +746,6 @@ private fun DashboardPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
-            onOpenEditor = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -771,7 +767,6 @@ private fun DashboardEmptyPreview() {
             uiState = DashboardUiState(connectionState = HaConnectionState.Disconnected("timeout", 5_000)),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
-            onOpenEditor = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -811,7 +806,6 @@ private fun DashboardEditModePreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
-            onOpenEditor = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
