@@ -66,7 +66,7 @@ tablet (definidos en `MqttTopics`):
 | Discovery config | `homeassistant/<component>/<deviceId>/<objectId>/config` (retenido) |
 
 `<objectId>` por entidad: `screen` (switch), `brightness` y `screen_off_timeout` (number),
-`view` (select), `main_view` (button), `camera` y `camera_close_after` (number), `reload` (button),
+`view` (select), `main_view` (button), `camera` (select), `camera_close_after` (number), `reload` (button),
 `battery` (sensor), `charging` (binary_sensor), `current_view` y `last_interaction` (sensor).
 
 Las vistas y cámaras pueden repetir nombre: el `select` de Home Assistant sólo maneja strings, así que
@@ -77,6 +77,9 @@ ignora. Cuando cambian las vistas o cámaras del dashboard, sólo se republica e
 afectado (retenido), no el resto de las entidades.
 
 ### Comando JSON (`hakiosk/<deviceId>/command`)
+
+Los comandos (`.../set` y `.../command`) se publican **sin retener**: un mensaje retenido se ignora,
+porque el broker lo reenviaría y se volvería a ejecutar en cada reconexión.
 
 Para automatizaciones que no quieran manejar los topics `.../set` de cada entidad. Payload malformado
 o comando desconocido se ignora (se loguea sin volcar el payload). Un `close_after` presente pero no
@@ -140,20 +143,20 @@ borrarlo a mano desde Home Assistant.
 
 ## Etapas
 
-### Etapa 0 — Contrato (coordinador)
+### Etapa 0 — Contrato (coordinador) ✅
 `data/device/`: `MqttConfig`/`MqttConfigStore`, `MqttRemoteControl` (conexión y prueba),
 `RemoteCommand` (lo que HA pide), `DeviceUiState` (lo que la UI reporta) y `RemoteControlBridge`
 (puente entre la capa MQTT y la UI), con fakes.
 
-### Etapa 1 — Conexión MQTT (`device-control`, Opus)
+### Etapa 1 — Conexión MQTT (`device-control`, Opus) ✅
 Librería verificada, config store cifrado, cliente con reconexión y LWT, servicio en primer plano,
 prueba de conexión. En paralelo con la etapa 3.
 
-### Etapa 2 — Discovery y estado (`device-control`)
+### Etapa 2 — Discovery y estado (`device-control`) ✅
 Publicación de las entidades de la tabla, suscripción a comandos → `RemoteControlBridge`, publicación
 del estado (desde `DeviceUiState` y batería/carga), limpieza de entidades obsoletas.
 
-### Etapa 3 — UI (`android-ui`)
+### Etapa 3 — UI (`android-ui`) ✅
 Pantalla de configuración del broker; aplicar comandos (capa de pantalla apagada, brillo, apagado por
 inactividad, cambiar vista, abrir/cerrar cámara con cierre automático, recargar); reportar
 `DeviceUiState`. En paralelo con la etapa 1 contra los fakes.
