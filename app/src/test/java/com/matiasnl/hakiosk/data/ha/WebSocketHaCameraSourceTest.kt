@@ -12,8 +12,10 @@ import com.matiasnl.hakiosk.data.ha.fake.InMemoryHaConfigStore
 import com.matiasnl.hakiosk.data.ha.ws.Backoff
 import com.matiasnl.hakiosk.data.ha.ws.HaClientSettings
 import com.matiasnl.hakiosk.data.ha.ws.HaRequestException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
@@ -164,9 +166,15 @@ class WebSocketHaCameraSourceTest {
             assertEquals(HaRequestException.CODE_CONNECTION_LOST, error.code)
             awaitComplete()
         }
-        // The repository still reconnects on its own.
-        awaitValue(repo.connectionState) { it == HaConnectionState.Connected }
-        assertEquals(2, ha.connections.get())
+        // The repository still reconnects on its own. Poll: right after the drop the state can still
+        // read the old Connected, and a StateFlow collector may skip the intermediate states.
+        withContext(Dispatchers.IO) {
+            val deadline = System.currentTimeMillis() + 5_000
+            while (!(ha.connections.get() == 2 && repo.connectionState.value == HaConnectionState.Connected)) {
+                check(System.currentTimeMillis() < deadline) { "Did not reconnect: ${repo.connectionState.value}" }
+                Thread.sleep(20)
+            }
+        }
     }
 
     @Test
