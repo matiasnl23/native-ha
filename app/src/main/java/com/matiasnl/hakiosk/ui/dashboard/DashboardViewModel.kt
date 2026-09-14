@@ -531,6 +531,24 @@ class DashboardViewModel(
     /** Any pointer event on the dashboard: restarts the inactivity countdown. Cheap enough for every event. */
     fun onUserActivity() = inactivityTimer.onActivity()
 
+    /**
+     * Remote control support (see `RemoteCommandNavigator`): makes [viewId] the current view, like
+     * [onViewLinkClick] but addressed by id directly. No-op while editing (an unattended remote
+     * command must never discard the user's in-progress edits) or for an id the layout doesn't have.
+     */
+    fun selectView(viewId: String) {
+        if (editController.state.value.isEditing) return
+        val layout = layoutState.value ?: return
+        if (layout.views.none { it.id == viewId }) return
+        select(viewId)
+    }
+
+    /** Remote control support: makes the first view current. No-op while editing or before the layout loads. */
+    fun selectFirstView() {
+        val firstViewId = layoutState.value?.views?.firstOrNull()?.id ?: return
+        selectView(firstViewId)
+    }
+
     /** Persists the kiosk inactivity setting right away (it's a preference, not part of the working copy). */
     fun setInactivityReturnMinutes(minutes: Int) {
         viewModelScope.launch { viewPreferencesStore.setInactivityReturnMinutes(minutes) }

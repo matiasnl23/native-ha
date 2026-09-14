@@ -4,14 +4,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -32,6 +40,8 @@ import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
 import com.matiasnl.hakiosk.ui.remote.BrokerSettingsScreen
 import com.matiasnl.hakiosk.ui.remote.BrokerSettingsViewModel
+import com.matiasnl.hakiosk.ui.remote.RemoteCommandNavigator
+import com.matiasnl.hakiosk.ui.remote.RemoteNavigationActions
 import com.matiasnl.hakiosk.ui.remote.ScreenControlViewModel
 import com.matiasnl.hakiosk.ui.remote.ScreenOffOverlay
 import com.matiasnl.hakiosk.ui.remote.WindowBrightnessEffect
@@ -41,6 +51,16 @@ import kotlinx.coroutines.flow.first
 
 /** Where the app lands on cold start, resolved once the first stored config value is known. */
 private enum class StartDestination { Loading, Setup, Dashboard }
+
+/** Leaves the camera screen (if open) and navigates to the dashboard unless it's already current. */
+private fun ensureOnDashboard(navController: NavHostController) {
+    if (navController.currentDestination?.hasRoute<CameraRoute>() == true) {
+        navController.popBackStack()
+    }
+    if (navController.currentDestination?.hasRoute<DashboardRoute>() != true) {
+        navController.navigate(DashboardRoute) { launchSingleTop = true }
+    }
+}
 
 /**
  * App-wide navigation graph. Decides the start destination from [haConfigStore] (no config yet ->
@@ -81,6 +101,49 @@ fun HaKioskNavGraph(
         StartDestination.Setup, StartDestination.Dashboard -> {
             val navController = rememberNavController()
             val latestOnUserActivity by rememberUpdatedState(screenControlViewModel::onUserActivity)
+
+            // Tracks the current DashboardViewModel instance (only set while its back stack entry
+            // exists), so remote navigation commands can drive it regardless of which screen shows.
+            var dashboardViewModel by remember { mutableStateOf<DashboardViewModel?>(null) }
+            val coroutineScope = rememberCoroutineScope()
+            val navigator = remember {
+                RemoteCommandNavigator(
+                    scope = coroutineScope,
+                    commands = remoteControlBridge.commands,
+                    actions = object : RemoteNavigationActions {
+                        override val isDashboardEditing: Boolean
+                            get() = dashboardViewModel?.uiState?.value?.isEditing == true
+
+                        override fun goToView(viewId: String) {
+                            ensureOnDashboard(navController)
+                            dashboardViewModel?.selectView(viewId)
+                        }
+
+                        override fun goToFirstView() {
+                            ensureOnDashboard(navController)
+                            dashboardViewModel?.selectFirstView()
+                        }
+
+                        override fun openCamera(entityId: String) {
+                            navController.navigate(CameraRoute(entityId)) { launchSingleTop = true }
+                        }
+
+                        override fun closeCamera() {
+                            if (navController.currentDestination?.hasRoute<CameraRoute>() == true) {
+                                navController.popBackStack()
+                            }
+                        }
+                    },
+                    turnScreenOn = screenControlViewModel::turnScreenOn,
+                    cameraCloseAfterSecondsProvider = { screenState.cameraCloseAfterSeconds },
+                    reload = {
+                        haRepository.stop()
+                        haRepository.start()
+                    },
+                )
+            }
+            LaunchedEffect(navigator) { navigator.start() }
+
             Box(
                 // Any touch anywhere in the app restarts the screen-off countdown. Observed in the
                 // Initial pass and never consumed, so every screen's own gestures behave as before.
@@ -141,6 +204,12 @@ fun HaKioskNavGraph(
                             viewModelStoreOwner = backStackEntry,
                             factory = DashboardViewModel.factory(haRepository, dashboardLayoutStore, dashboardViewPreferencesStore),
                         )
+                        // Exposes this instance to the remote navigation actions above for as long as
+                        // this back stack entry is alive (it may still exist while another screen shows).
+                        DisposableEffect(viewModel) {
+                            dashboardViewModel = viewModel
+                            onDispose { if (dashboardViewModel === viewModel) dashboardViewModel = null }
+                        }
                         DashboardScreen(
                             viewModel = viewModel,
                             onOpenSettings = { navController.navigate(SetupRoute) },
@@ -175,6 +244,7 @@ fun HaKioskNavGraph(
                             viewModel = viewModel,
                             snapshots = cameraModule.snapshots,
                             onClose = { navController.popBackStack() },
+                            onUserActivity = navigator::onCameraScreenTouch,
                         )
                     }
                 }

@@ -28,12 +28,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
@@ -68,6 +71,8 @@ fun CameraScreen(
     viewModel: CameraViewModel,
     snapshots: CameraSnapshotRepository<ImageBitmap>,
     onClose: () -> Unit,
+    /** A touch anywhere on the screen; used to cancel a remote-command auto-close (see RemoteCommandNavigator). */
+    onUserActivity: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -97,13 +102,24 @@ fun CameraScreen(
         else -> null
     } ?: cachedThumbnail
 
+    val latestOnUserActivity by rememberUpdatedState(onUserActivity)
     CameraContent(
         uiState = uiState,
         snapshot = snapshot,
         onClose = onClose,
         onRetry = viewModel::retry,
         onMutedChange = viewModel::setMuted,
-        modifier = Modifier.onSizeChanged { size = it },
+        modifier = Modifier
+            .onSizeChanged { size = it }
+            // Initial pass, never consumed: doesn't interfere with the close/mute buttons or a swipe.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        latestOnUserActivity()
+                    }
+                }
+            },
         videoContent = { video, modifier -> WebRtcVideo(video, modifier) },
     )
 }
