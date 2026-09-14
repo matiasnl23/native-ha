@@ -46,6 +46,12 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        resources {
+            // Duplicated jar metadata from the Netty modules pulled in by the MQTT client; unused at runtime.
+            excludes += setOf("META-INF/INDEX.LIST", "META-INF/io.netty.versions.properties")
+        }
+    }
 }
 
 dependencies {
@@ -67,6 +73,10 @@ dependencies {
     // Prebuilt Google libwebrtc (org.webrtc.*) for the camera focus view. No abiFilters on purpose:
     // the target tablets include 32-bit armeabi-v7a devices.
     implementation(libs.webrtc.android)
+    // MQTT client for remote control from Home Assistant (MQTT 3.1.1/5, TLS, Last Will). Actively
+    // maintained, unlike Eclipse Paho (last release 2020). Only the core artifact: no websocket,
+    // proxy or epoll extras.
+    implementation(libs.hivemq.mqtt.client)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
