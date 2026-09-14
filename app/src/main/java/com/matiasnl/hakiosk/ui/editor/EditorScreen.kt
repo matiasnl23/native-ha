@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,20 +130,22 @@ private fun EditorContent(
                 )
             }
             item {
-                Row(
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    FilterChip(
-                        selected = uiState.domainFilter == null,
-                        onClick = { onDomainFilterChange(null) },
-                        label = { Text(stringResource(R.string.editor_filter_all)) },
-                    )
-                    uiState.domains.forEach { domain ->
+                    item(key = "__all_domains__") {
+                        FilterChip(
+                            selected = uiState.domainFilter == null,
+                            onClick = { onDomainFilterChange(null) },
+                            label = { ChipLabel(stringResource(R.string.editor_filter_all)) },
+                        )
+                    }
+                    items(uiState.domains, key = { it }) { domain ->
                         FilterChip(
                             selected = uiState.domainFilter == domain,
                             onClick = { onDomainFilterChange(domain) },
-                            label = { Text(domain) },
+                            label = { ChipLabel(domain) },
                         )
                     }
                 }
@@ -161,6 +165,12 @@ private fun EditorContent(
             }
         }
     }
+}
+
+/** Chip text that never wraps or gets squeezed vertically, even in a tight, scrollable row. */
+@Composable
+private fun ChipLabel(text: String) {
+    Text(text = text, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
 }
 
 @Composable
