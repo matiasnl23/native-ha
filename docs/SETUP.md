@@ -1,97 +1,129 @@
-# Setup del entorno (primera vez)
+# Setup del entorno de desarrollo (macOS o Linux)
 
-Máquina: Ubuntu 24.04, con snap disponible, ~69GB libres y 62GB RAM — sobra para Android Studio +
-SDK (usan entre 8 y 15GB en total).
+El proyecto ya existe en GitHub: en una máquina nueva solo hay que instalar Android Studio, clonar y
+abrir. Nada de la configuración de build depende del sistema operativo:
+
+- `gradlew` es ejecutable y usa Gradle 9.x; la JVM del daemon (Java 25) se descarga sola la primera
+  vez para macOS (Intel y Apple Silicon), Linux y Windows (`gradle/gradle-daemon-jvm.properties`).
+- La ruta del SDK vive en `local.properties`, que **no** está en git: Android Studio lo crea al abrir
+  el proyecto en cada máquina.
+
+Espacio necesario: ~15 GB entre Android Studio, SDK y un emulador.
 
 ## 1. Instalar Android Studio
+
+**macOS**
+
+- Descargá el `.dmg` desde [developer.android.com/studio](https://developer.android.com/studio)
+  eligiendo **Mac with Apple chip** (M1/M2/M3/M4) o **Mac with Intel chip** según tu Mac
+  ( → Acerca de esta Mac). Arrastrá Android Studio a Aplicaciones.
+- Alternativa con Homebrew: `brew install --cask android-studio`.
+
+**Linux (Ubuntu)**
 
 ```bash
 sudo snap install android-studio --classic
 ```
 
-Al terminar, lanzarlo:
+## 2. Setup Wizard (primera vez que abrís Android Studio)
+
+1. Install Type → **Standard**.
+2. Verificá que vaya a descargar **Android SDK**, **Android SDK Platform**, **Android Virtual Device**
+   y **Android SDK Platform-Tools** (trae `adb`).
+3. Aceptá las licencias → **Finish** (descarga varios GB).
+
+El SDK queda en:
+
+| Sistema | Ruta del SDK |
+|---|---|
+| macOS | `~/Library/Android/sdk` |
+| Linux | `~/Android/Sdk` |
+
+## 3. Git y acceso a GitHub por SSH
+
+El repo se clona por SSH (`git@github.com:matiasnl23/native-ha.git`).
+
+**macOS:** `git` viene con las Command Line Tools; si no las tenés, correr `git --version` ofrece
+instalarlas (o `xcode-select --install`).
+
+Si la máquina todavía no tiene una clave SSH registrada en GitHub:
 
 ```bash
-android-studio
+ssh-keygen -t ed25519 -C "tu-email"
+# macOS: guardar la passphrase en el llavero
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # en Linux: ssh-add ~/.ssh/id_ed25519
+cat ~/.ssh/id_ed25519.pub   # pegar en GitHub → Settings → SSH and GPG keys → New SSH key
+ssh -T git@github.com       # debería saludarte con tu usuario
 ```
 
-## 2. Setup Wizard inicial (solo la primera vez que abrís Android Studio)
+Configurá también tu identidad de git en esa máquina (`git config --global user.name` /
+`user.email`).
 
-1. "Welcome to Android Studio" → **Next**.
-2. Install Type → **Standard** (deja que elija SDK, emulador, etc. por defecto).
-3. Elegí un tema (Light/Darcula) → **Next**.
-4. Verify Settings: revisa que vaya a descargar el **Android SDK**, **Android SDK Platform**,
-   **Android Virtual Device** y sobre todo **Android SDK Platform-Tools** (ahí viene `adb`, lo vas
-   a necesitar después) → **Next**.
-5. Acepta las licencias (License Agreement) → **Finish**. Va a descargar varios GB, puede tardar
-   varios minutos según tu conexión.
-
-## 3. Crear el proyecto
-
-**Importante:** no lo crees directamente dentro de `/home/matias/Proyectos/native-home-assistant`
-porque ya tiene archivos (README, `.git`, `.claude/agents/`) y el wizard prefiere una carpeta vacía.
-Lo creamos aparte y después lo movemos.
-
-1. En la pantalla de bienvenida: **New Project**.
-2. Elegí la plantilla **Empty Activity** (la que muestra el logo de Jetpack Compose — en versiones
-   recientes de Android Studio es la única "Empty Activity" y ya usa Compose por defecto; si ves
-   una versión "Empty Views Activity" separada, esa es la vieja basada en XML, **no** uses esa).
-3. Completá el formulario:
-   - **Name:** `HA Kiosk`
-   - **Package name:** `com.matiasnl.hakiosk`
-   - **Save location:** dejá la que sugiere por defecto (algo como
-     `/home/matias/AndroidStudioProjects/HaKiosk`) — **no** la cambies a la carpeta del repo todavía.
-   - **Minimum SDK:** `API 26 ("Oreo"; Android 8.0)`
-   - **Build configuration language:** **Kotlin DSL (build.gradle.kts)** — importante, no dejes la
-     opción Groovy.
-   - Si hay un checkbox de **"Create Git repository"**: **dejalo destildado** (ya tenemos git
-     inicializado en el repo real, no queremos un segundo repo anidado).
-4. **Finish**. Va a tardar unos minutos en el primer "Gradle Sync" (descarga dependencias). Dejalo
-   terminar sin tocar nada — vas a ver una barra de progreso abajo.
-5. Cuando termine, probá que compile: apretá el botón ▶️ (Run) arriba. Te va a pedir crear un
-   dispositivo virtual (emulador) o podés conectar tu celular/tablet por USB con "Depuración USB"
-   activada (Ajustes → Opciones de desarrollador → Depuración USB; si no ves "Opciones de
-   desarrollador", andá a Ajustes → Acerca del teléfono → tocá 7 veces "Número de compilación").
-   Deberías ver una pantalla con "Hello Android!" — eso confirma que el esqueleto compila bien.
-
-## 4. Mover el proyecto generado dentro del repo real
-
-Con Android Studio cerrado (o al menos sin tocar el proyecto), desde una terminal:
+## 4. Clonar y abrir
 
 ```bash
-rsync -av --ignore-existing /home/matias/AndroidStudioProjects/HaKiosk/ /home/matias/Proyectos/native-home-assistant/
+git clone git@github.com:matiasnl23/native-ha.git
 ```
 
-`--ignore-existing` copia todo lo nuevo (carpeta `app/`, `gradle/`, `gradlew`, `build.gradle.kts`,
-`settings.gradle.kts`, etc.) pero **no pisa** el `README.md`, `.gitignore` ni `.claude/agents/` que
-ya existen en el repo.
+En Android Studio: **Open** → la carpeta clonada. Dejá terminar el primer **Gradle Sync** (descarga
+dependencias y la JVM del daemon). Android Studio crea `local.properties` con `sdk.dir` apuntando a
+la ruta de la tabla anterior.
 
-Después abrí el proyecto ya movido:
+## 5. Dispositivo para correr la app
+
+**Emulador:** Device Manager → **Create Virtual Device** → una tablet (p. ej. *Pixel Tablet*) →
+imagen de sistema reciente.
+
+- En Macs con Apple Silicon usá imágenes **arm64-v8a** (las x86/x86_64 no corren ahí). La app
+  incluye libwebrtc para todas las arquitecturas, así que las cámaras funcionan igual.
+- En Linux/Intel, las imágenes **x86_64** son las más rápidas.
+
+**Tablet o celular real por USB:** Ajustes → Acerca del dispositivo → tocar 7 veces "Número de
+compilación" → Opciones de desarrollador → **Depuración USB**. En macOS no hace falta instalar
+drivers.
+
+Luego ▶️ (Run) en Android Studio.
+
+## 6. `adb` y `./gradlew` desde la terminal
+
+Agregá al perfil de tu shell (`~/.zshrc` en macOS y en este Linux; `~/.bashrc` si usás bash):
 
 ```bash
-android-studio /home/matias/Proyectos/native-home-assistant
-```
+# macOS
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+# Linux
+# export ANDROID_HOME="$HOME/Android/Sdk"
 
-Y dejalo sincronizar de nuevo (puede tardar un poco la primera vez en la nueva ubicación).
-
-## 5. Dejar `adb` disponible en la terminal (lo vas a necesitar más adelante)
-
-Agregá esto a tu `~/.zshrc`:
-
-```bash
-export ANDROID_HOME="$HOME/Android/Sdk"
 export PATH="$PATH:$ANDROID_HOME/platform-tools"
 ```
 
-Después `source ~/.zshrc` y verificá con:
+`./gradlew` necesita un JDK 17 o superior para arrancar. Si no tenés uno instalado, usá el que trae
+Android Studio:
+
+```bash
+# macOS
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+# Linux (snap)
+# export JAVA_HOME="/snap/android-studio/current/jbr"
+```
+
+Abrí una terminal nueva (o `source ~/.zshrc`) y verificá:
 
 ```bash
 adb devices
+./gradlew assembleDebug testDebugUnitTest
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-(con el celular/tablet conectado por USB y depuración USB activada, debería listarlo).
+`adb install -r` actualiza la app **sin borrar sus datos** (URL y token de Home Assistant, layout del
+dashboard). Evitá `adb uninstall` salvo que quieras empezar de cero.
 
-## 6. Avisar para continuar
+## 7. Datos de la app en cada dispositivo
 
-Con el esqueleto compilando y corriendo "Hello Android!" en tu celular o tablet, avisame y seguimos
-con el código real del MVP1 (cliente WebSocket de Home Assistant + pantalla del dashboard).
+La URL de Home Assistant, el token y el layout del dashboard se guardan **en cada dispositivo**
+(el token cifrado con una clave del Android Keystore, que no se puede exportar). Un emulador nuevo en
+la Mac arranca en la pantalla de configuración: generá un token nuevo en HA (perfil → Seguridad →
+Tokens de acceso de larga duración) o reutilizá uno existente.
+
+Si una actualización agrega un permiso nuevo y la app falla con `socket failed: EPERM` en el
+emulador, desinstalá y reinstalá la app (es un problema conocido del emulador, no del código).

@@ -25,35 +25,25 @@ entidades exponer), proyectos `kiosk-satellite` y `FreeKiosk` (patrones de Devic
 ## Roadmap
 
 1. **MVP1** ✅ — Auth con token, cliente WebSocket, dashboard de botones configurable por el usuario.
-   Probado contra una instancia real de HA por https (Let's Encrypt). En curso: filtros por
-   piso/área en el editor.
-2. **MVP2** — Cámaras: vista en foco vía go2rtc/WebRTC + miniaturas MJPEG en el grid.
+   Probado contra una instancia real de HA por https (Let's Encrypt).
+2. **MVP2** ✅ — Cámaras: vista en foco vía go2rtc/WebRTC + miniaturas por snapshot en el grid.
+   - **Rediseño del dashboard** ✅ — modo edición, tiles redimensionables, drag & drop, múltiples
+     vistas y botones inteligentes (luces, alarma). Ver [`docs/UI-REWORK.md`](docs/UI-REWORK.md).
 3. **MVP3** — Cliente MQTT + Discovery para control remoto desde HA, y Device Owner opcional
    (modo kiosko estricto + reinicio remoto).
 
-## Cómo levantar el proyecto (primera vez)
+## Entorno de desarrollo
 
-Esta máquina no tiene Android Studio, SDK ni Gradle instalados. El camino más confiable para
-generar el esqueleto Gradle correcto es dejar que Android Studio lo haga (evita errores de
-sintaxis en archivos de build que después son difíciles de depurar sin experiencia previa):
-
-1. Instalar [Android Studio](https://developer.android.com/studio) (última versión estable).
-2. `File > New > New Project > Empty Activity` (la variante que ya usa Compose por defecto).
-   - Name: `HA Kiosk`
-   - Package name: `com.matiasnl.hakiosk`
-   - Minimum SDK: `API 26 (Android 8.0)`
-   - Language: Kotlin
-3. Guardar el proyecto generado **dentro de esta carpeta** (`/home/matias/Proyectos/native-home-assistant`),
-   sobrescribiendo esta carpeta con la estructura que genere el wizard (o creándolo aparte y moviendo
-   el contenido aquí).
-4. Avisar para continuar: a partir de ahí se agrega el módulo de red (OkHttp + WebSocket de HA),
-   las pantallas de Compose del dashboard, el cliente MQTT y las piezas de MVP2/MVP3.
+Se puede desarrollar desde macOS o Linux: instalar Android Studio, clonar y abrir. Los pasos
+(incluyendo `adb`, JDK para `./gradlew` y emuladores en Apple Silicon) están en
+[`docs/SETUP.md`](docs/SETUP.md).
 
 ## Testing
 
 Dispositivos de prueba disponibles: un celular Android, una tablet Android 10 y el emulador de
-Android Studio. `adb` está en `~/Android/Sdk/platform-tools/adb` — sirve para desplegar builds sin
-Android Studio y para el paso de provisioning de Device Owner (`adb shell dpm set-device-owner`).
+Android Studio. `adb` está en `platform-tools` dentro del SDK (`~/Library/Android/sdk` en macOS,
+`~/Android/Sdk` en Linux) — sirve para desplegar builds sin Android Studio y para el paso de
+provisioning de Device Owner (`adb shell dpm set-device-owner`).
 
 Build y tests desde la terminal: `./gradlew assembleDebug testDebugUnitTest`.
 
