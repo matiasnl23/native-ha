@@ -3,6 +3,8 @@ package com.matiasnl.hakiosk.data.ha
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
+import com.matiasnl.hakiosk.data.ha.fake.FakeHaCameraSource
 import com.matiasnl.hakiosk.data.ha.store.DataStoreHaConfigStore
 import com.matiasnl.hakiosk.data.ha.store.KeystoreTokenCipher
 import okhttp3.OkHttpClient
@@ -32,4 +34,7 @@ class HaModule(context: Context) {
     val configStore: HaConfigStore by lazy { DataStoreHaConfigStore(dataStore, KeystoreTokenCipher()) }
 
     val repository: HaRepository by lazy { WebSocketHaRepository(configStore, okHttpClient) }
+
+    // Fake until the WebSocket/REST camera implementation lands.
+    val cameraSource: HaCameraSource by lazy { FakeHaCameraSource() }
 }

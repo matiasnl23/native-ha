@@ -6,6 +6,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardModule
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaModule
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
 
 /** Manual dependency container (no DI framework, keeps startup and RAM low). One instance per process. */
 class AppContainer(context: Context) {
@@ -14,5 +15,6 @@ class AppContainer(context: Context) {
 
     val haConfigStore: HaConfigStore get() = ha.configStore
     val haRepository: HaRepository get() = ha.repository
+    val haCameraSource: HaCameraSource get() = ha.cameraSource
     val dashboardConfigStore: DashboardConfigStore get() = dashboard.configStore
 }
