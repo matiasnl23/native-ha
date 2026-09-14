@@ -67,6 +67,8 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.AddTileModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.EditTileModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.GridSettingsModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.PreviewTile
+import com.matiasnl.hakiosk.ui.dashboard.edit.ViewListItem
+import com.matiasnl.hakiosk.ui.dashboard.edit.ViewsModal
 import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
@@ -90,6 +92,7 @@ fun DashboardScreen(
     var editingTileId by remember { mutableStateOf<String?>(null) }
     var showAddTile by remember { mutableStateOf(false) }
     var showGridSettings by remember { mutableStateOf(false) }
+    var showViews by remember { mutableStateOf(false) }
     val addTilePickerState by viewModel.addTilePicker.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
@@ -110,6 +113,7 @@ fun DashboardScreen(
             editingTileId = null
             showAddTile = false
             showGridSettings = false
+            showViews = false
         }
     }
 
@@ -138,8 +142,22 @@ fun DashboardScreen(
             showAddTile = true
         },
         onOpenGridSettings = { showGridSettings = true },
+        onOpenViews = { showViews = true },
         cameraThumbnail = cameraThumbnail,
     )
+
+    if (showViews) {
+        ViewsModal(
+            views = uiState.pages.map { ViewListItem(it.viewId, it.name) },
+            editingViewId = uiState.viewId,
+            onAddView = viewModel::addView,
+            onRenameView = viewModel::renameView,
+            onRemoveView = viewModel::removeView,
+            onMoveView = viewModel::moveView,
+            onSelectView = viewModel::selectEditingView,
+            onDismiss = { showViews = false },
+        )
+    }
 
     if (showDiscardConfirm) {
         AlertDialog(
@@ -278,6 +296,7 @@ private fun DashboardContent(
     onEditTile: (tileId: String) -> Unit,
     onAddTile: () -> Unit,
     onOpenGridSettings: () -> Unit,
+    onOpenViews: () -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
     // The pager is only built once the layout and the last opened view are known, so it starts on
@@ -298,6 +317,7 @@ private fun DashboardContent(
                 actions = {
                     if (uiState.isEditing) {
                         TextButton(onClick = onRequestCancelEdit) { Text(stringResource(R.string.dashboard_edit_cancel)) }
+                        TextButton(onClick = onOpenViews) { Text(stringResource(R.string.dashboard_edit_views)) }
                         TextButton(onClick = onOpenGridSettings) { Text(stringResource(R.string.dashboard_edit_grid)) }
                         TextButton(onClick = onDoneEdit) { Text(stringResource(R.string.dashboard_edit_done)) }
                     } else {
@@ -959,6 +979,7 @@ private fun DashboardPreview() {
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
+            onOpenViews = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1005,6 +1026,7 @@ private fun DashboardMultiViewPreview() {
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
+            onOpenViews = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1034,6 +1056,7 @@ private fun DashboardEmptyPreview() {
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
+            onOpenViews = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1075,6 +1098,7 @@ private fun DashboardEditModePreview() {
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
+            onOpenViews = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }

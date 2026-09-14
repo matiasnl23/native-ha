@@ -75,6 +75,120 @@ class DashboardEditControllerTest {
     }
 
     @Test
+    fun `addView appends a trimmed view to the working copy and edits it, refusing blank names`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+
+        assertNull(controller.addView("   "))
+        val id = controller.addView("  Cocina ")
+
+        val state = controller.state.value
+        assertEquals("id-1", id)
+        assertEquals(listOf("main", "other", "id-1"), state.working!!.views.map { it.id })
+        assertEquals("Cocina", state.working!!.views.last().name)
+        assertEquals("id-1", state.editingViewId)
+        assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `addView allows duplicate names`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.addView("Otra")
+
+        assertEquals(listOf("Principal", "Otra", "Otra"), controller.state.value.working!!.views.map { it.name })
+    }
+
+    @Test
+    fun `renameView trims the name and ignores blank names`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.renameView("other", "  Arriba  ")
+        controller.renameView("other", " ")
+
+        assertEquals("Arriba", controller.state.value.working!!.views[1].name)
+    }
+
+    @Test
+    fun `removeView drops the view and the links to it, moving editing to the neighbour`() {
+        val threeViews = layout.copy(
+            views = layout.views + DashboardView(
+                id = "third",
+                name = "Tercera",
+                tiles = listOf(DashboardTile("link-other", TileContent.ViewLink("other")), DashboardTile("link-main", TileContent.ViewLink("main"))),
+            ),
+        )
+        val (controller, _, _) = controller(InMemoryDashboardLayoutStore(threeViews))
+        controller.enter(threeViews, "other")
+
+        controller.removeView("other")
+
+        val state = controller.state.value
+        assertEquals(listOf("main", "third"), state.working!!.views.map { it.id })
+        assertEquals("third", state.editingViewId) // Took the removed view's place.
+        assertEquals(listOf("link-main"), state.working!!.views[1].tiles.map { it.id })
+    }
+
+    @Test
+    fun `removing the last view in order edits the previous one, and a non-edited removal keeps the edited view`() {
+        val threeViews = layout.copy(views = layout.views + DashboardView("third", "Tercera"))
+        val (controller, _, _) = controller(InMemoryDashboardLayoutStore(threeViews))
+        controller.enter(threeViews, "third")
+
+        controller.removeView("third")
+        assertEquals("other", controller.state.value.editingViewId)
+
+        controller.removeView("main")
+        assertEquals("other", controller.state.value.editingViewId)
+        assertEquals(listOf("other"), controller.state.value.working!!.views.map { it.id })
+    }
+
+    @Test
+    fun `removeView refuses to remove the last remaining view`() {
+        val single = DashboardLayout(listOf(DashboardView("only", "Única")))
+        val (controller, _, _) = controller(InMemoryDashboardLayoutStore(single))
+        controller.enter(single, "only")
+
+        controller.removeView("only")
+
+        assertEquals(single, controller.state.value.working)
+        assertFalse(controller.state.value.isDirty)
+    }
+
+    @Test
+    fun `moveView reorders views, keeps the edited view and same-index moves stay clean`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.moveView(1, 1)
+        controller.moveView(1, 9) // Clamps to 1, its own index.
+        assertFalse(controller.state.value.isDirty)
+
+        controller.moveView(0, 5)
+
+        val state = controller.state.value
+        assertEquals(listOf("other", "main"), state.working!!.views.map { it.id })
+        assertEquals("main", state.editingViewId)
+        assertTrue(state.isDirty)
+    }
+
+    @Test
+    fun `cancel discards view changes`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+        controller.addView("Nueva")
+        controller.renameView("main", "Renombrada")
+        controller.removeView("other")
+
+        controller.cancel()
+
+        assertNull(controller.state.value.working)
+        assertEquals(layout, store.layout.value)
+    }
+
+    @Test
     fun `selectView outside edit mode is a no-op`() {
         val (controller, _, _) = controller()
 

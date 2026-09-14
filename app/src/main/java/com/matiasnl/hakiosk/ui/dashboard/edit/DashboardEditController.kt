@@ -9,9 +9,13 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.addTile
+import com.matiasnl.hakiosk.data.dashboard.addView
 import com.matiasnl.hakiosk.data.dashboard.moveTile
+import com.matiasnl.hakiosk.data.dashboard.moveView
 import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
 import com.matiasnl.hakiosk.data.dashboard.removeTile
+import com.matiasnl.hakiosk.data.dashboard.removeView
+import com.matiasnl.hakiosk.data.dashboard.renameView
 import com.matiasnl.hakiosk.data.dashboard.setGrid
 import com.matiasnl.hakiosk.data.dashboard.updateTile
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +83,53 @@ class DashboardEditController(
         _state.update { state ->
             val working = state.working ?: return@update state
             if (working.views.none { it.id == viewId }) state else state.copy(editingViewId = viewId)
+        }
+    }
+
+    /**
+     * Appends a new empty view named [name] (trimmed) to the working copy and edits it. Returns its
+     * id, or null (nothing changes) for a blank name or outside edit mode. Duplicate names are fine.
+     */
+    fun addView(name: String): String? {
+        val state = _state.value
+        val working = state.working ?: return null
+        val trimmed = name.trim().ifEmpty { return null }
+        val (layout, id) = working.addView(trimmed, idProvider)
+        _state.value = state.copy(working = layout, editingViewId = id)
+        return id
+    }
+
+    /** Renames a view of the working copy to [name] (trimmed); a blank name is ignored. */
+    fun renameView(viewId: String, name: String) {
+        val trimmed = name.trim().ifEmpty { return }
+        mutate { layout, _ -> layout.renameView(viewId, trimmed) }
+    }
+
+    /**
+     * Removes a view from the working copy, together with every link tile pointing at it. The last
+     * remaining view can't be removed. If it was the edited view, editing moves to the view that takes
+     * its place (the next one), or the previous one when it was last.
+     */
+    fun removeView(viewId: String) {
+        val state = _state.value
+        val working = state.working ?: return
+        val index = working.views.indexOfFirst { it.id == viewId }
+        if (index < 0 || working.views.size <= 1) return
+        val updated = working.removeView(viewId)
+        val editingViewId = if (state.editingViewId == viewId) {
+            updated.views[index.coerceAtMost(updated.views.lastIndex)].id
+        } else {
+            state.editingViewId
+        }
+        _state.value = state.copy(working = updated, editingViewId = editingViewId)
+    }
+
+    /** Moves the view at [fromIndex] to [toIndex] (clamped). The edited view stays the edited view wherever it lands. */
+    fun moveView(fromIndex: Int, toIndex: Int) = mutate { layout, _ ->
+        if (fromIndex !in layout.views.indices || toIndex.coerceIn(0, layout.views.lastIndex) == fromIndex) {
+            layout
+        } else {
+            layout.moveView(fromIndex, toIndex)
         }
     }
 

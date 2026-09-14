@@ -390,6 +390,21 @@ class DashboardViewModel(
         isDragActive = active && editController.state.value.isEditing
     }
 
+    // --- View management (working copy only; Cancelar discards it all) ---
+
+    /** Appends a view and edits it (the pager follows). Blank names are refused. */
+    fun addView(name: String) {
+        editController.addView(name)
+    }
+
+    fun renameView(viewId: String, name: String) = editController.renameView(viewId, name)
+
+    /** Removes a view and the links to it; never the last one. Deleting the edited view edits its neighbour. */
+    fun removeView(viewId: String) = editController.removeView(viewId)
+
+    /** Reorders views; the current page follows the edited view to its new index. */
+    fun moveView(fromIndex: Int, toIndex: Int) = editController.moveView(fromIndex, toIndex)
+
     fun addEntityTile(entityId: String) = editController.addEntityTile(entityId)
 
     fun addSpacerTile() = editController.addSpacerTile()

@@ -821,6 +821,110 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `adding a view appends a page and edits it`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.addView(" Vista 4 ")
+        viewModel.addView("")
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("v1", "v2", "v3", "id-1"), state.pages.map { it.viewId })
+        assertEquals("Vista 4", state.pages[3].name)
+        assertEquals(3, state.currentPage)
+        assertEquals(listOf(AddTileUiState.ID), state.tiles.map { it.id })
+    }
+
+    @Test
+    fun `renaming a view updates its page and the links showing its name`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.renameView("v2", "Arriba")
+
+        val state = viewModel.uiState.value
+        assertEquals("Arriba", state.pages[1].name)
+        assertEquals("Arriba", (state.pages[0].tiles[1] as ViewLinkTileUiState).label)
+    }
+
+    @Test
+    fun `deleting the edited view edits its neighbour and removes links to it`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        viewModel.selectEditingView("v2")
+
+        viewModel.removeView("v2")
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("v1", "v3"), state.pages.map { it.viewId })
+        assertEquals("v3", state.viewId)
+        assertEquals(listOf("a-light"), state.pages[0].tiles.map { it.id })
+    }
+
+    @Test
+    fun `the last view can't be deleted`() = runTest {
+        val (viewModel, _, _) = multiViewModel(layout = layoutWithTile("light.kitchen"))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.removeView("view-1")
+
+        assertEquals(listOf("view-1"), viewModel.uiState.value.pages.map { it.viewId })
+        assertFalse(viewModel.uiState.value.isDirty)
+    }
+
+    @Test
+    fun `reordering views keeps the edited view as the current page`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.moveView(0, 2)
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("v2", "v3", "v1"), state.pages.map { it.viewId })
+        assertEquals(2, state.currentPage)
+        assertEquals("v1", state.viewId)
+    }
+
+    @Test
+    fun `Cancelar discards added, renamed, deleted and reordered views`() = runTest {
+        val (viewModel, layoutStore, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val original = layoutStore.layout.value
+        viewModel.enterEditMode()
+        viewModel.addView("Nueva")
+        viewModel.renameView("v1", "Otra")
+        viewModel.removeView("v2")
+        viewModel.moveView(0, 1)
+
+        viewModel.cancelEditMode()
+
+        val state = viewModel.uiState.value
+        assertEquals(original, layoutStore.layout.value)
+        assertEquals(listOf("v1", "v2", "v3"), state.pages.map { it.viewId })
+        assertEquals(0, state.currentPage) // The added (edited) view is gone: back to the view edit mode started on.
+    }
+
+    @Test
+    fun `Listo persists added views once and stays on the new view`() = runTest {
+        val store = CountingLayoutStore(threeViewLayout())
+        val viewModel = DashboardViewModel(FakeHaRepository(emptyList()), store, FakeDashboardIdProvider())
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        viewModel.addView("Nueva")
+
+        viewModel.doneEditMode()
+
+        assertEquals(1, store.updates)
+        assertEquals(listOf("v1", "v2", "v3", "id-1"), store.layout.value.views.map { it.id })
+        assertEquals(3, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
     fun `isDirty flips once an edit is made`() = runTest {
         val (viewModel, _) = editingViewModel()
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }

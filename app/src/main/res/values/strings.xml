@@ -41,6 +41,7 @@
     <string name="dashboard_edit_mode_title">Editando el dashboard</string>
     <string name="dashboard_edit_cancel">Cancelar</string>
     <string name="dashboard_edit_grid">Grilla</string>
+    <string name="dashboard_edit_views">Vistas</string>
     <string name="dashboard_edit_done">Listo</string>
     <string name="dashboard_edit_discard_title">¿Descartar los cambios?</string>
     <string name="dashboard_edit_discard_message">Todavía no guardaste los cambios de este dashboard.</string>
@@ -72,8 +73,29 @@
     <string name="add_tile_option_link">Link a vista</string>
     <string name="add_tile_spacer_hint">Un espacio vacío para separar visualmente grupos de botones.</string>
     <string name="add_tile_spacer_action">Agregar espacio</string>
-    <string name="add_tile_link_empty">Todavía no hay otras vistas. Vas a poder crearlas más adelante.</string>
+    <string name="add_tile_link_empty">Todavía no hay otras vistas. Creá una desde «Vistas».</string>
     <string name="add_tile_cancel">Cancelar</string>
+
+    <!-- Views modal -->
+    <string name="views_title">Vistas</string>
+    <string name="views_help">En el dashboard se cambia de vista deslizando. Los cambios se guardan al tocar Listo.</string>
+    <string name="views_editing">Editando</string>
+    <string name="views_move_up">Subir %1$s</string>
+    <string name="views_move_down">Bajar %1$s</string>
+    <string name="views_rename">Renombrar %1$s</string>
+    <string name="views_delete">Borrar %1$s</string>
+    <string name="views_name_label">Nombre</string>
+    <string name="views_rename_save">Guardar</string>
+    <string name="views_rename_cancel">Cancelar</string>
+    <string name="views_new_label">Nueva vista</string>
+    <string name="views_add">Agregar</string>
+    <string name="views_default_name">Vista %1$d</string>
+    <string name="views_close">Cerrar</string>
+    <string name="views_last_view_hint">Siempre tiene que haber al menos una vista.</string>
+    <string name="views_delete_title">¿Borrar la vista «%1$s»?</string>
+    <string name="views_delete_message">Se quitan sus botones y los links que apuntan a ella. Podés descartarlo con Cancelar mientras no toques Listo.</string>
+    <string name="views_delete_confirm">Borrar</string>
+    <string name="views_delete_keep">Conservar</string>
 
     <!-- Grid settings modal -->
     <string name="grid_settings_title">Grilla</string>
