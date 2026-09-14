@@ -43,6 +43,20 @@ class FakeHaWebSocketServer : WebSocketListener() {
         "config/entity_registry/list_for_display" to Json.parseToJsonElement("""{"entities":[]}"""),
     )
 
+    @Volatile var cameraCapabilities: JsonElement = Json.parseToJsonElement("""{"frontend_stream_types":["web_rtc"]}""")
+    @Volatile var webRtcClientConfig: JsonElement =
+        Json.parseToJsonElement("""{"configuration":{"iceServers":[{"urls":"stun:stun.home-assistant.io:3478"}]}}""")
+
+    /** When set (code to message), `camera/webrtc/offer` answers with an error result. */
+    @Volatile var offerError: Pair<String, String>? = null
+
+    /** Session id sent as the first event after a successful offer, like HA does. */
+    @Volatile var webRtcSessionId = "session-1"
+
+    /** Body served for `GET /api/camera_proxy/...`; the last such request is kept in [lastSnapshotRequest]. */
+    @Volatile var snapshotBody: ByteArray = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xD9.toByte())
+    @Volatile var lastSnapshotRequest: RecordedRequest? = null
+
     /** Registry commands that answer with an error result. */
     @Volatile var failingCommands: Set<String> = emptySet()
 
@@ -57,6 +71,10 @@ class FakeHaWebSocketServer : WebSocketListener() {
     init {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
+                if (request.path.orEmpty().startsWith("/api/camera_proxy/")) {
+                    lastSnapshotRequest = request
+                    return MockResponse().setHeader("Content-Type", "image/jpeg").setBody(okio.Buffer().write(snapshotBody))
+                }
                 connections.incrementAndGet()
                 return MockResponse().withWebSocketUpgrade(this@FakeHaWebSocketServer)
             }
@@ -104,6 +122,21 @@ class FakeHaWebSocketServer : WebSocketListener() {
                     webSocket.send(result(id!!, response))
                 }
             }
+            "camera/capabilities" -> webSocket.send(result(id!!, cameraCapabilities))
+            "camera/webrtc/get_client_config" -> webSocket.send(result(id!!, webRtcClientConfig))
+            "camera/webrtc/candidate", "unsubscribe_events" -> webSocket.send(result(id!!, JsonNull))
+            "camera/webrtc/offer" -> {
+                val error = offerError
+                if (error != null) {
+                    webSocket.send("""{"id":$id,"type":"result","success":false,"error":{"code":"${error.first}","message":"${error.second}"}}""")
+                } else {
+                    webSocket.send(result(id!!, JsonNull))
+                    webSocket.send(eventMessage(id, buildJsonObject {
+                        put("type", "session")
+                        put("session_id", webRtcSessionId)
+                    }))
+                }
+            }
             "call_service" -> {
                 val error = serviceError
                 if (error == null) {
@@ -144,6 +177,17 @@ class FakeHaWebSocketServer : WebSocketListener() {
         }
         current!!.send(event.toString())
     }
+
+    /** Sends an `event` message for a per-request subscription (e.g. a WebRTC offer) on the current connection. */
+    fun sendSubscriptionEvent(subscriptionId: Int, event: String) {
+        current!!.send(eventMessage(subscriptionId, Json.parseToJsonElement(event) as JsonObject))
+    }
+
+    private fun eventMessage(id: Int, event: JsonObject) = buildJsonObject {
+        put("id", id)
+        put("type", "event")
+        put("event", event)
+    }.toString()
 
     /** Server-side close, e.g. HA restarting. */
     fun dropConnection() {
