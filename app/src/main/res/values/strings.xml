@@ -43,6 +43,18 @@
     <!-- Camera -->
     <string name="camera_thumbnail_description">Imagen de la cámara</string>
     <string name="camera_thumbnail_placeholder">Sin imagen</string>
+    <string name="camera_close">Cerrar</string>
+    <string name="camera_mute">Silenciar</string>
+    <string name="camera_unmute">Activar sonido</string>
+    <string name="camera_connecting">Conectando video en vivo…</string>
+    <string name="camera_no_live_video">Sin video en vivo</string>
+    <string name="camera_no_webrtc">Esta cámara no ofrece WebRTC en Home Assistant (go2rtc). Se muestran capturas periódicas.</string>
+    <string name="camera_error_setup">No se pudo iniciar el video: %1$s</string>
+    <string name="camera_error_signaling">Home Assistant no pudo abrir el video: %1$s</string>
+    <string name="camera_error_timeout">No llegó video en %1$d segundos</string>
+    <string name="camera_error_connection_lost">Se perdió la conexión de video</string>
+    <string name="camera_snapshot_error">No se pudo obtener la imagen: %1$s</string>
+    <string name="camera_retry">Reintentar</string>
 
     <!-- Editor -->
     <string name="editor_title">Editar botones</string>

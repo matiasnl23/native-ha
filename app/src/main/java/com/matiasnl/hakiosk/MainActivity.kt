@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
                     haConfigStore = container.haConfigStore,
                     haRepository = container.haRepository,
                     dashboardConfigStore = container.dashboardConfigStore,
+                    cameraModule = container.camera,
                 )
             }
         }
@@ -31,6 +32,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // The camera screen stops its own session; this is a safety net so no WebRTC survives in background.
+        container.camera.webRtcSessionManager.stop()
         container.haRepository.stop()
         super.onStop()
     }

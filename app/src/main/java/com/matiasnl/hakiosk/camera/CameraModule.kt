@@ -21,7 +21,7 @@ private const val TAG = "HaKioskCamera"
 private const val MAX_THUMBNAIL_CACHE_BYTES = 8L * 1024 * 1024
 
 /** Wires camera streaming. One instance per process, so there is a single WebRTC session app-wide. */
-class CameraModule(context: Context, cameraSource: HaCameraSource) {
+class CameraModule(context: Context, val cameraSource: HaCameraSource) {
     private val appContext = context.applicationContext
 
     /** Single-threaded: every libwebrtc signaling/dispose call is serialized, off the main thread. */

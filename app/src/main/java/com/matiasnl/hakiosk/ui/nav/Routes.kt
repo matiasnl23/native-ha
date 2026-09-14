@@ -10,6 +10,10 @@ object SetupRoute
 @Serializable
 object DashboardRoute
 
+/** Full-screen focus view of one camera. [label] is the dashboard tile's name override, if any. */
+@Serializable
+data class CameraRoute(val entityId: String, val label: String? = null)
+
 /** Dashboard tile editor: pick which entities show up and in what order. */
 @Serializable
 object EditorRoute

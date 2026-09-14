@@ -10,9 +10,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.matiasnl.hakiosk.camera.CameraModule
 import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.ui.camera.CameraScreen
+import com.matiasnl.hakiosk.ui.camera.CameraViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
 import com.matiasnl.hakiosk.ui.editor.EditorScreen
@@ -34,6 +38,7 @@ fun HaKioskNavGraph(
     haConfigStore: HaConfigStore,
     haRepository: HaRepository,
     dashboardConfigStore: DashboardConfigStore,
+    cameraModule: CameraModule,
 ) {
     val startDestination by produceState(initialValue = StartDestination.Loading, haConfigStore) {
         value = if (haConfigStore.config.first() == null) StartDestination.Setup else StartDestination.Dashboard
@@ -81,6 +86,25 @@ fun HaKioskNavGraph(
                         viewModel = viewModel,
                         onOpenEditor = { navController.navigate(EditorRoute) },
                         onOpenSettings = { navController.navigate(SetupRoute) },
+                    )
+                }
+                composable<CameraRoute> { backStackEntry ->
+                    val route = backStackEntry.toRoute<CameraRoute>()
+                    val viewModel: CameraViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = CameraViewModel.factory(
+                            entityId = route.entityId,
+                            label = route.label,
+                            haRepository = haRepository,
+                            cameraSource = cameraModule.cameraSource,
+                            sessionManager = cameraModule.webRtcSessionManager,
+                        ),
+                    )
+                    CameraScreen(
+                        entityId = route.entityId,
+                        viewModel = viewModel,
+                        snapshots = cameraModule.snapshots,
+                        onClose = { navController.popBackStack() },
                     )
                 }
                 composable<EditorRoute> { backStackEntry ->
