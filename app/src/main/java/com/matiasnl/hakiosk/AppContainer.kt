@@ -5,6 +5,10 @@ import com.matiasnl.hakiosk.camera.CameraModule
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardModule
 import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
+import com.matiasnl.hakiosk.data.device.DeviceModule
+import com.matiasnl.hakiosk.data.device.MqttConfigStore
+import com.matiasnl.hakiosk.data.device.MqttRemoteControl
+import com.matiasnl.hakiosk.data.device.RemoteControlBridge
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaModule
 import com.matiasnl.hakiosk.data.ha.HaRepository
@@ -14,6 +18,7 @@ import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
 class AppContainer(context: Context) {
     private val ha = HaModule(context.applicationContext)
     private val dashboard = DashboardModule(context.applicationContext)
+    private val device = DeviceModule(context.applicationContext)
 
     val haConfigStore: HaConfigStore get() = ha.configStore
     val haRepository: HaRepository get() = ha.repository
@@ -21,4 +26,7 @@ class AppContainer(context: Context) {
     val dashboardLayoutStore: DashboardLayoutStore get() = dashboard.layoutStore
     val dashboardViewPreferencesStore: DashboardViewPreferencesStore get() = dashboard.viewPreferencesStore
     val camera: CameraModule by lazy { CameraModule(context.applicationContext, ha.cameraSource) }
+    val remoteControlBridge: RemoteControlBridge get() = device.remoteControlBridge
+    val mqttConfigStore: MqttConfigStore get() = device.mqttConfigStore
+    val mqttRemoteControl: MqttRemoteControl get() = device.mqttRemoteControl
 }
