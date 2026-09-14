@@ -52,6 +52,8 @@ private const val CAMERA_DOMAIN = "camera"
 /** Quiet time after the last page settle before the last opened view is written to disk. */
 const val LAST_VIEW_SAVE_DEBOUNCE_MILLIS = 1_500L
 
+private const val MILLIS_PER_MINUTE = 60_000L
+
 /** Upper bound on how long Listo waits for the store to echo the persisted layout back. */
 private const val PERSIST_ECHO_TIMEOUT_MILLIS = 2_000L
 
@@ -166,6 +168,8 @@ data class DashboardUiState(
     val isDirty: Boolean = false,
     /** Other views a "link to view" tile could target, for the add-tile modal. Empty outside edit mode. */
     val linkTargets: List<LinkTargetOption> = emptyList(),
+    /** Minutes without touches before returning to the first view (outside edit mode); 0 = disabled. */
+    val inactivityReturnMinutes: Int = 0,
 ) {
     /** The page at [currentPage] (the edited view while editing), or null before the layout loads. */
     val currentPageUi: DashboardPageUi? get() = pages.getOrNull(currentPage)
@@ -231,6 +235,8 @@ class DashboardViewModel(
     idProvider: DashboardIdProvider = UuidDashboardIdProvider,
     private val viewPreferencesStore: DashboardViewPreferencesStore = InMemoryDashboardViewPreferencesStore(),
     lastViewSaveDebounceMillis: Long = LAST_VIEW_SAVE_DEBOUNCE_MILLIS,
+    /** Monotonic milliseconds for the inactivity timer; must match the main dispatcher's `delay` timeline. */
+    clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : ViewModel() {
 
     private val _errorEvents = MutableSharedFlow<DashboardActionError>(extraBufferCapacity = 1)
@@ -265,6 +271,12 @@ class DashboardViewModel(
     /** Null until the persisted last view has been read. */
     private val selection = MutableStateFlow<ViewSelection?>(null)
 
+    /** The kiosk inactivity setting as persisted (0 until read). */
+    private val inactivityReturnMinutes: StateFlow<Int> = viewPreferencesStore.preferences
+        .map { it.inactivityReturnMinutes }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
     /** True while the edited page's grid has a tile lifted; main thread only. */
     private var isDragActive = false
 
@@ -296,7 +308,8 @@ class DashboardViewModel(
         structure,
         haRepository.entities,
         haRepository.connectionState,
-    ) { structure, entities, connectionState ->
+        inactivityReturnMinutes,
+    ) { structure, entities, connectionState, inactivityMinutes ->
         DashboardUiState(
             isLoaded = structure.isLoaded,
             pages = structure.pages.map { page -> reuseIfEqual(page.toUi(structure.viewNames, entities)) },
@@ -306,10 +319,19 @@ class DashboardViewModel(
             isEditing = structure.isEditing,
             isDirty = structure.isDirty,
             linkTargets = structure.linkTargets,
+            inactivityReturnMinutes = inactivityMinutes,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
+    private val inactivityTimer = InactivityTimer(viewModelScope, clock, onTimeout = ::returnToFirstView)
+
     init {
+        // Runs only outside edit mode with the setting on; leaving edit mode starts the countdown over.
+        viewModelScope.launch {
+            combine(inactivityReturnMinutes, editController.state) { minutes, edit -> if (edit.isEditing) 0 else minutes }
+                .distinctUntilChanged()
+                .collect { minutes -> inactivityTimer.start(minutes * MILLIS_PER_MINUTE) }
+        }
         viewModelScope.launch {
             val lastViewId = viewPreferencesStore.preferences.first().lastViewId
             persistedLastViewId = lastViewId
@@ -449,6 +471,21 @@ class DashboardViewModel(
         val layout = layoutState.value ?: return
         if (layout.views.none { it.id == tile.targetViewId }) return
         select(tile.targetViewId)
+    }
+
+    /** Any pointer event on the dashboard: restarts the inactivity countdown. Cheap enough for every event. */
+    fun onUserActivity() = inactivityTimer.onActivity()
+
+    /** Persists the kiosk inactivity setting right away (it's a preference, not part of the working copy). */
+    fun setInactivityReturnMinutes(minutes: Int) {
+        viewModelScope.launch { viewPreferencesStore.setInactivityReturnMinutes(minutes) }
+    }
+
+    private fun returnToFirstView() {
+        if (editController.state.value.isEditing) return
+        val layout = layoutState.value ?: return
+        val firstViewId = layout.views.firstOrNull()?.id ?: return
+        if (resolveViewId(layout, selection.value?.viewId) != firstViewId) select(firstViewId)
     }
 
     private fun select(viewId: String) {

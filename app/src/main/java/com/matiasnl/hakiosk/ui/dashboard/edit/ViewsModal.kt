@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.dashboard.edit
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.matiasnl.hakiosk.R
+import com.matiasnl.hakiosk.data.dashboard.INACTIVITY_RETURN_OPTIONS
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 /** One row of the views modal. */
@@ -63,6 +66,8 @@ fun ViewsModal(
     onRemoveView: (viewId: String) -> Unit,
     onMoveView: (fromIndex: Int, toIndex: Int) -> Unit,
     onSelectView: (viewId: String) -> Unit,
+    inactivityReturnMinutes: Int,
+    onInactivityReturnChange: (minutes: Int) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -140,6 +145,10 @@ fun ViewsModal(
                     }
                 }
 
+                HorizontalDivider()
+
+                InactivityReturnSection(selectedMinutes = inactivityReturnMinutes, onChange = onInactivityReturnChange)
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.views_close)) }
                 }
@@ -210,6 +219,39 @@ private fun ViewRow(
     }
 }
 
+/** Kiosk setting: return to the first view after N minutes without touches. Saved immediately, unlike the views. */
+@Composable
+private fun InactivityReturnSection(selectedMinutes: Int, onChange: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.views_inactivity_title), style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = stringResource(R.string.views_inactivity_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            INACTIVITY_RETURN_OPTIONS.forEach { minutes ->
+                FilterChip(
+                    selected = minutes == selectedMinutes,
+                    onClick = { if (minutes != selectedMinutes) onChange(minutes) },
+                    label = {
+                        Text(
+                            if (minutes == 0) {
+                                stringResource(R.string.views_inactivity_off)
+                            } else {
+                                stringResource(R.string.views_inactivity_minutes, minutes)
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun RenameRow(initialName: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
     var name by rememberSaveable { mutableStateOf(initialName) }
@@ -252,6 +294,8 @@ private fun ViewsModalPreview() {
             onRemoveView = {},
             onMoveView = { _, _ -> },
             onSelectView = {},
+            inactivityReturnMinutes = 5,
+            onInactivityReturnChange = {},
             onDismiss = {},
         )
     }

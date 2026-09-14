@@ -96,6 +96,10 @@
     <string name="views_delete_message">Se quitan sus botones y los links que apuntan a ella. Podés descartarlo con Cancelar mientras no toques Listo.</string>
     <string name="views_delete_confirm">Borrar</string>
     <string name="views_delete_keep">Conservar</string>
+    <string name="views_inactivity_title">Volver a la primera vista</string>
+    <string name="views_inactivity_help">Si nadie toca la pantalla durante este tiempo, el dashboard vuelve solo a la primera vista. Se guarda al instante, sin esperar a Listo.</string>
+    <string name="views_inactivity_off">Desactivado</string>
+    <string name="views_inactivity_minutes">%1$d min</string>
 
     <!-- Grid settings modal -->
     <string name="grid_settings_title">Grilla</string>

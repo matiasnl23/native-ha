@@ -49,6 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -143,6 +145,7 @@ fun DashboardScreen(
         },
         onOpenGridSettings = { showGridSettings = true },
         onOpenViews = { showViews = true },
+        onUserActivity = viewModel::onUserActivity,
         cameraThumbnail = cameraThumbnail,
     )
 
@@ -155,6 +158,8 @@ fun DashboardScreen(
             onRemoveView = viewModel::removeView,
             onMoveView = viewModel::moveView,
             onSelectView = viewModel::selectEditingView,
+            inactivityReturnMinutes = uiState.inactivityReturnMinutes,
+            onInactivityReturnChange = viewModel::setInactivityReturnMinutes,
             onDismiss = { showViews = false },
         )
     }
@@ -297,6 +302,7 @@ private fun DashboardContent(
     onAddTile: () -> Unit,
     onOpenGridSettings: () -> Unit,
     onOpenViews: () -> Unit,
+    onUserActivity: () -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
     // The pager is only built once the layout and the last opened view are known, so it starts on
@@ -310,7 +316,18 @@ private fun DashboardContent(
         null
     }
 
+    val latestOnUserActivity by rememberUpdatedState(onUserActivity)
     Scaffold(
+        // Any touch anywhere on the dashboard restarts the inactivity countdown. Observed in the
+        // Initial pass and never consumed, so taps, swipes and drags behave exactly as before.
+        modifier = Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    latestOnUserActivity()
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 title = { DashboardTitle(uiState, pagerState) },
@@ -980,6 +997,7 @@ private fun DashboardPreview() {
             onAddTile = {},
             onOpenGridSettings = {},
             onOpenViews = {},
+            onUserActivity = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1027,6 +1045,7 @@ private fun DashboardMultiViewPreview() {
             onAddTile = {},
             onOpenGridSettings = {},
             onOpenViews = {},
+            onUserActivity = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1057,6 +1076,7 @@ private fun DashboardEmptyPreview() {
             onAddTile = {},
             onOpenGridSettings = {},
             onOpenViews = {},
+            onUserActivity = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
@@ -1099,6 +1119,7 @@ private fun DashboardEditModePreview() {
             onAddTile = {},
             onOpenGridSettings = {},
             onOpenViews = {},
+            onUserActivity = {},
             cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }

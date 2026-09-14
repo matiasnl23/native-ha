@@ -924,6 +924,79 @@ class DashboardViewModelTest {
         assertEquals(3, viewModel.uiState.value.currentPage)
     }
 
+    // --- Inactivity return ---
+
+    private fun kotlinx.coroutines.test.TestScope.inactivityViewModel(minutes: Int): Pair<DashboardViewModel, InMemoryDashboardViewPreferencesStore> {
+        val preferences = InMemoryDashboardViewPreferencesStore(DashboardViewPreferences(inactivityReturnMinutes = minutes))
+        val viewModel = DashboardViewModel(
+            FakeHaRepository(emptyList()),
+            InMemoryDashboardLayoutStore(threeViewLayout()),
+            FakeDashboardIdProvider(),
+            viewPreferencesStore = preferences,
+            clock = { testScheduler.currentTime },
+        )
+        return viewModel to preferences
+    }
+
+    @Test
+    fun `inactivity return is disabled by default`() = runTest {
+        val (viewModel, _) = inactivityViewModel(minutes = 0)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v3")
+
+        advanceTimeBy(60 * 60_000L)
+
+        assertEquals(0, viewModel.uiState.value.inactivityReturnMinutes)
+        assertEquals(2, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `returns to the first view after the configured minutes without touches, and touches reset it`() = runTest {
+        val (viewModel, _) = inactivityViewModel(minutes = 1)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v3")
+
+        advanceTimeBy(59_000)
+        viewModel.onUserActivity()
+        advanceTimeBy(59_000) // 118 s in, 59 s after the touch.
+        assertEquals(2, viewModel.uiState.value.currentPage)
+
+        advanceTimeBy(1_001)
+        assertEquals(0, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `inactivity return never fires while editing and restarts after leaving edit mode`() = runTest {
+        val (viewModel, _) = inactivityViewModel(minutes = 1)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v2")
+        viewModel.enterEditMode()
+
+        advanceTimeBy(5 * 60_000L)
+        assertTrue(viewModel.uiState.value.isEditing)
+        assertEquals(1, viewModel.uiState.value.currentPage)
+
+        viewModel.cancelEditMode()
+        advanceTimeBy(59_000)
+        assertEquals(1, viewModel.uiState.value.currentPage)
+        advanceTimeBy(1_001)
+        assertEquals(0, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `changing the inactivity setting persists it and takes effect`() = runTest {
+        val (viewModel, preferences) = inactivityViewModel(minutes = 0)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v2")
+
+        viewModel.setInactivityReturnMinutes(5)
+        assertEquals(5, preferences.preferences.value.inactivityReturnMinutes)
+        assertEquals(5, viewModel.uiState.value.inactivityReturnMinutes)
+
+        advanceTimeBy(5 * 60_000L + 1)
+        assertEquals(0, viewModel.uiState.value.currentPage)
+    }
+
     @Test
     fun `isDirty flips once an edit is made`() = runTest {
         val (viewModel, _) = editingViewModel()
