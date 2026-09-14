@@ -19,6 +19,7 @@ class MainActivity : ComponentActivity() {
                     haConfigStore = container.haConfigStore,
                     haRepository = container.haRepository,
                     dashboardLayoutStore = container.dashboardLayoutStore,
+                    dashboardViewPreferencesStore = container.dashboardViewPreferencesStore,
                     cameraModule = container.camera,
                 )
             }

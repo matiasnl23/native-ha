@@ -722,6 +722,15 @@ private fun previewEntity(
     rowSpan = rowSpan,
 )
 
+private fun previewPage(viewId: String, name: String, grid: DashboardGridSettings, tiles: List<DashboardTileUi>) =
+    DashboardPageUi(
+        viewId = viewId,
+        name = name,
+        grid = grid,
+        tiles = tiles,
+        packing = GridPacker().pack(grid.columns, tiles, { it.colSpan }, { it.rowSpan }),
+    )
+
 @Preview(showBackground = true, widthDp = 900, heightDp = 600)
 @Composable
 private fun DashboardPreview() {
@@ -738,10 +747,8 @@ private fun DashboardPreview() {
     HAKioskTheme {
         DashboardContent(
             uiState = DashboardUiState(
-                viewId = "main",
-                grid = grid,
-                tiles = tiles,
-                packing = GridPacker().pack(grid.columns, tiles, { it.colSpan }, { it.rowSpan }),
+                isLoaded = true,
+                pages = listOf(previewPage("main", "Principal", grid, tiles)),
                 connectionState = HaConnectionState.Connected,
             ),
             snackbarHostState = remember { SnackbarHostState() },
@@ -795,10 +802,8 @@ private fun DashboardEditModePreview() {
     HAKioskTheme {
         DashboardContent(
             uiState = DashboardUiState(
-                viewId = "main",
-                grid = grid,
-                tiles = tiles,
-                packing = GridPacker().pack(grid.columns, tiles, { it.colSpan }, { it.rowSpan }),
+                isLoaded = true,
+                pages = listOf(previewPage("main", "Principal", grid, tiles)),
                 connectionState = HaConnectionState.Connected,
                 isEditing = true,
                 isDirty = true,

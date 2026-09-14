@@ -9,8 +9,11 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
+import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardViewPreferencesStore
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
+import com.matiasnl.hakiosk.data.dashboard.resolveViewId
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
@@ -20,16 +23,22 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
 import com.matiasnl.hakiosk.ui.picker.EntityPickerState
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Domains whose tap toggles the entity. */
 private val TOGGLE_DOMAINS = setOf("light", "switch", "fan", "input_boolean", "automation")
@@ -39,6 +48,12 @@ private val TURN_ON_DOMAINS = setOf("scene", "script")
 
 /** Camera tiles open the full-screen camera view instead of calling a service. */
 private const val CAMERA_DOMAIN = "camera"
+
+/** Quiet time after the last page settle before the last opened view is written to disk. */
+const val LAST_VIEW_SAVE_DEBOUNCE_MILLIS = 1_500L
+
+/** Upper bound on how long Listo waits for the store to echo the persisted layout back. */
+private const val PERSIST_ECHO_TIMEOUT_MILLIS = 2_000L
 
 /** The service a tap on this domain should call, or null if the tile is display-only. */
 private fun serviceFor(domain: String): String? = when (domain) {
@@ -90,11 +105,14 @@ data class ViewLinkTileUiState(
     val label: String?,
     override val colSpan: Int = 1,
     override val rowSpan: Int = 1,
-    /** The tile's stored label override, or null if it falls back to [targetViewName]. Edit-mode only. */
+    /** The tile's stored label override, or null if it falls back to [targetViewName]. */
     val rawLabel: String? = null,
-    /** The target view's own name, or null if it's unknown (a stale/missing view id). Edit-mode only. */
+    /** The target view's own name, or null if it's unknown (a stale/missing view id). */
     val targetViewName: String? = null,
-) : DashboardTileUi
+) : DashboardTileUi {
+    /** False when the target view doesn't exist: tapping is a no-op and the tile looks disabled. */
+    val hasTarget: Boolean get() = targetViewName != null
+}
 
 /**
  * The trailing "＋" tile shown only while editing, appended after the working copy's real tiles.
@@ -110,13 +128,31 @@ data class AddTileUiState(
     }
 }
 
-data class DashboardUiState(
-    /** Id of the view being shown, null until the layout loads. */
-    val viewId: String? = null,
+/** One view of the (stored or working) layout, rendered as one pager page. */
+data class DashboardPageUi(
+    val viewId: String,
+    val name: String,
     val grid: DashboardGrid = DashboardGrid(),
+    /** All the view's tiles in order; while editing, the edited page also ends with the "＋" tile. */
     val tiles: List<DashboardTileUi> = emptyList(),
-    /** Placements index-aligned with [tiles], packed into [grid]'s columns. Same instance until the layout changes. */
+    /** Placements index-aligned with [tiles], packed into [grid]'s columns. Same instance until this view's structure changes. */
     val packing: GridPacking = GridPacking.Empty,
+)
+
+data class DashboardUiState(
+    /**
+     * True once both the layout and the last opened view are known. The screen only builds its pager
+     * then, so it starts on [currentPage] instead of flashing the first page.
+     */
+    val isLoaded: Boolean = false,
+    /** One page per view, in view order. Empty until the layout loads. */
+    val pages: List<DashboardPageUi> = emptyList(),
+    /**
+     * Index into [pages] the dashboard should show: the edited view while editing, otherwise the
+     * last settled/navigated view (falling back to the first one). The screen scrolls its pager here
+     * whenever it changes.
+     */
+    val currentPage: Int = 0,
     val connectionState: HaConnectionState = HaConnectionState.Idle,
     /**
      * True once we've ever synced entities. After [HaRepository.stop] the connection goes back to
@@ -130,7 +166,22 @@ data class DashboardUiState(
     val isDirty: Boolean = false,
     /** Other views a "link to view" tile could target, for the add-tile modal. Empty outside edit mode. */
     val linkTargets: List<LinkTargetOption> = emptyList(),
-)
+) {
+    /** The page at [currentPage] (the edited view while editing), or null before the layout loads. */
+    val currentPageUi: DashboardPageUi? get() = pages.getOrNull(currentPage)
+
+    /** Id of the current page's view, null until the layout loads. */
+    val viewId: String? get() = currentPageUi?.viewId
+
+    /** The current page's grid settings. */
+    val grid: DashboardGrid get() = currentPageUi?.grid ?: DashboardGrid()
+
+    /** The current page's tiles (the edited view's, "＋" included, while editing). */
+    val tiles: List<DashboardTileUi> get() = currentPageUi?.tiles.orEmpty()
+
+    /** The current page's packing. */
+    val packing: GridPacking get() = currentPageUi?.packing ?: GridPacking.Empty
+}
 
 /** A camera tile was tapped: the screen should open its focus view. */
 data class OpenCameraEvent(val entityId: String, val label: String)
@@ -138,32 +189,48 @@ data class OpenCameraEvent(val entityId: String, val label: String)
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
 
-/** Layout-derived part of the state: only recomputed (and re-packed) when the layout or edit state changes, not on entity updates. */
-private data class ViewStructure(
-    val view: DashboardView?,
+/** The view the dashboard is on outside edit mode; [viewId] null = "whatever the first view is". */
+private data class ViewSelection(val viewId: String?)
+
+/** A view plus its packing, cached per view id so only views whose structure changed get re-packed. */
+private data class PageStructure(val view: DashboardView, val showAddTile: Boolean, val packing: GridPacking)
+
+/** Layout-derived part of the state: only recomputed (and re-packed) when the layout, selection or edit state changes, not on entity updates. */
+private data class LayoutStructure(
+    val isLoaded: Boolean,
+    val pages: List<PageStructure>,
+    val currentPage: Int,
     val viewNames: Map<String, String>,
-    val packing: GridPacking,
     val isEditing: Boolean,
     val isDirty: Boolean,
     val linkTargets: List<LinkTargetOption>,
-    /** True once a trailing "＋" placeholder was folded into [packing] (edit mode only). */
-    val showAddTile: Boolean,
-)
+) {
+    companion object {
+        val NotLoaded = LayoutStructure(false, emptyList(), 0, emptyMap(), false, false, emptyList())
+    }
+}
 
 /**
- * Shows the first view: all its tiles in order (entity tiles joined with live entity state, spacers
- * and view links), its grid settings and the dense packing of the tiles. Maps taps on entity tiles to
- * Home Assistant service calls.
+ * Shows every view of the dashboard as a page: all its tiles in order (entity tiles joined with live
+ * entity state, spacers and view links), its grid settings and the dense packing of the tiles. Maps
+ * taps on entity tiles to Home Assistant service calls.
+ *
+ * **Current view.** Outside edit mode the current page is the last one the pager settled on
+ * ([onPageSettled]) or navigated to. It starts at the persisted last opened view (see
+ * [DashboardViewPreferencesStore]); settles are written back, debounced.
  *
  * Also owns edit mode: [enterEditMode] snapshots the current layout into a working copy (via
  * [editController]) that [uiState] renders instead of the persisted layout until [doneEditMode]
  * persists it or [cancelEditMode] discards it. Entity tile taps are no-ops while editing — see
  * [onTileClick] — since a tap on a tile then opens its edit modal instead (a screen-level concern).
  */
+@OptIn(FlowPreview::class)
 class DashboardViewModel(
     private val haRepository: HaRepository,
     private val dashboardLayoutStore: DashboardLayoutStore,
     idProvider: DashboardIdProvider = UuidDashboardIdProvider,
+    private val viewPreferencesStore: DashboardViewPreferencesStore = InMemoryDashboardViewPreferencesStore(),
+    lastViewSaveDebounceMillis: Long = LAST_VIEW_SAVE_DEBOUNCE_MILLIS,
 ) : ViewModel() {
 
     private val _errorEvents = MutableSharedFlow<DashboardActionError>(extraBufferCapacity = 1)
@@ -176,8 +243,14 @@ class DashboardViewModel(
     /** Emits when a camera tile was tapped, for the screen to navigate to the camera view. */
     val openCameraEvents: SharedFlow<OpenCameraEvent> = _openCameraEvents.asSharedFlow()
 
-    /** Only used from the sequential layout flow below. */
+    /** Only used from the sequential structure flow below. */
     private val packer = GridPacker()
+
+    /** Per view id; only touched from the sequential structure flow. */
+    private val pageCache = HashMap<String, PageStructure>()
+
+    /** Last emitted page per view id, reused when equal so unchanged pages keep their instance; only touched from [uiState]'s transform. */
+    private val lastPages = HashMap<String, DashboardPageUi>()
 
     private val editController = DashboardEditController(dashboardLayoutStore, idProvider)
 
@@ -189,7 +262,18 @@ class DashboardViewModel(
     private val layoutState: StateFlow<DashboardLayout?> = dashboardLayoutStore.layout
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Ids of the working copy's current-view entity tiles, for the add-tile modal's [EntityPicker]. */
+    /** Null until the persisted last view has been read. */
+    private val selection = MutableStateFlow<ViewSelection?>(null)
+
+    /** View id the preferences store holds (or is about to), to skip redundant writes. */
+    private var persistedLastViewId: String? = null
+
+    private val lastViewSaveRequests = MutableSharedFlow<String>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** Ids of the working copy's edited-view entity tiles, for the add-tile modal's [EntityPicker]. */
     private val editingEntityIds = editController.state
         .map { edit -> edit.editingView?.tiles.orEmpty().mapNotNullTo(HashSet()) { (it.content as? TileContent.Entity)?.entityId } }
         .distinctUntilChanged()
@@ -201,8 +285,8 @@ class DashboardViewModel(
         alreadyAddedIds = editingEntityIds,
     )
 
-    private val structure = combine(dashboardLayoutStore.layout, editController.state) { stored, edit ->
-        buildStructure(stored, edit)
+    private val structure = combine(layoutState, editController.state, selection) { stored, edit, selection ->
+        buildStructure(stored, edit, selection)
     }.distinctUntilChanged()
 
     val uiState: StateFlow<DashboardUiState> = combine(
@@ -210,27 +294,10 @@ class DashboardViewModel(
         haRepository.entities,
         haRepository.connectionState,
     ) { structure, entities, connectionState ->
-        val view = structure.view
-        val tiles = view?.tiles.orEmpty().map { tile ->
-            when (val content = tile.content) {
-                is TileContent.Entity -> content.toUiState(tile.id, tile.colSpan, tile.rowSpan, entities)
-                is TileContent.Spacer -> SpacerTileUiState(tile.id, tile.colSpan, tile.rowSpan)
-                is TileContent.ViewLink -> ViewLinkTileUiState(
-                    id = tile.id,
-                    targetViewId = content.targetViewId,
-                    label = content.label ?: structure.viewNames[content.targetViewId],
-                    colSpan = tile.colSpan,
-                    rowSpan = tile.rowSpan,
-                    rawLabel = content.label,
-                    targetViewName = structure.viewNames[content.targetViewId],
-                )
-            }
-        }
         DashboardUiState(
-            viewId = view?.id,
-            grid = view?.grid ?: DashboardGrid(),
-            tiles = if (structure.showAddTile) tiles + AddTileUiState() else tiles,
-            packing = structure.packing,
+            isLoaded = structure.isLoaded,
+            pages = structure.pages.map { page -> reuseIfEqual(page.toUi(structure.viewNames, entities)) },
+            currentPage = structure.currentPage,
             connectionState = connectionState,
             hasEntities = entities.isNotEmpty(),
             isEditing = structure.isEditing,
@@ -239,22 +306,67 @@ class DashboardViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
+    init {
+        viewModelScope.launch {
+            val lastViewId = viewPreferencesStore.preferences.first().lastViewId
+            persistedLastViewId = lastViewId
+            if (selection.value == null) selection.value = ViewSelection(lastViewId)
+        }
+        viewModelScope.launch {
+            lastViewSaveRequests.debounce(lastViewSaveDebounceMillis).collect { viewId ->
+                if (viewId != persistedLastViewId) {
+                    persistedLastViewId = viewId
+                    viewPreferencesStore.setLastViewId(viewId)
+                }
+            }
+        }
+    }
+
     /**
-     * Snapshots the first view of the current layout into a working copy and enters edit mode. No-op
-     * until the stored layout has loaded.
+     * The pager settled on [viewId]'s page (a swipe or a programmatic scroll finished). Makes it the
+     * current view and schedules persisting it as the last opened view. Ignored while editing (the
+     * edited view drives the pager then) and for ids that aren't in the stored layout.
+     */
+    fun onPageSettled(viewId: String) {
+        if (editController.state.value.isEditing) return
+        val layout = layoutState.value ?: return
+        if (layout.views.none { it.id == viewId }) return
+        select(viewId)
+    }
+
+    /**
+     * Snapshots the current layout into a working copy and enters edit mode on the current view.
+     * No-op until the stored layout has loaded.
      */
     fun enterEditMode() {
         val layout = layoutState.value ?: return
-        val viewId = layout.views.firstOrNull()?.id ?: return
+        val viewId = resolveViewId(layout, selection.value?.viewId) ?: return
         editController.enter(layout, viewId)
     }
 
-    /** Discards the working copy without writing anything. */
-    fun cancelEditMode() = editController.cancel()
+    /** Discards the working copy without writing anything; stays on the edited view if it still exists. */
+    fun cancelEditMode() {
+        val edit = editController.state.value
+        val original = edit.original
+        val editingViewId = edit.editingViewId
+        if (original != null && editingViewId != null && original.views.any { it.id == editingViewId }) {
+            select(editingViewId)
+        }
+        editController.cancel()
+    }
 
-    /** Persists the working copy in one store update and exits edit mode. */
+    /** Persists the working copy in one store update, exits edit mode and stays on the edited view. */
     fun doneEditMode() {
-        viewModelScope.launch { editController.done() }
+        val editingViewId = editController.state.value.takeIf { it.isEditing }?.editingViewId ?: return
+        viewModelScope.launch {
+            // Selecting first means no frame falls back to another page once the edit state resets.
+            select(editingViewId)
+            editController.done(
+                awaitPersisted = { working ->
+                    withTimeoutOrNull(PERSIST_ECHO_TIMEOUT_MILLIS) { layoutState.first { it == working } }
+                },
+            )
+        }
     }
 
     fun addEntityTile(entityId: String) = editController.addEntityTile(entityId)
@@ -291,30 +403,75 @@ class DashboardViewModel(
         }
     }
 
-    private fun buildStructure(stored: DashboardLayout, edit: DashboardEditState): ViewStructure {
-        val layout = edit.working ?: stored
-        val viewId = if (edit.isEditing) edit.editingViewId else layout.views.firstOrNull()?.id
-        val view = layout.views.firstOrNull { it.id == viewId }
-        val realCount = view?.tiles?.size ?: 0
-        val showAddTile = edit.isEditing
-        val totalCount = realCount + if (showAddTile) 1 else 0
-        val packing = view?.let {
-            packer.pack(
-                it.grid.columns,
-                totalCount,
-                colSpanOf = { i -> if (i < realCount) it.tiles[i].colSpan else 1 },
-                rowSpanOf = { i -> if (i < realCount) it.tiles[i].rowSpan else 1 },
-            )
-        } ?: GridPacking.Empty
-        return ViewStructure(
-            view = view,
+    private fun select(viewId: String) {
+        selection.value = ViewSelection(viewId)
+        lastViewSaveRequests.tryEmit(viewId)
+    }
+
+    private fun buildStructure(stored: DashboardLayout?, edit: DashboardEditState, selection: ViewSelection?): LayoutStructure {
+        val layout = edit.working ?: stored ?: return LayoutStructure.NotLoaded
+        val currentViewId = if (edit.isEditing) edit.editingViewId else resolveViewId(layout, selection?.viewId)
+        val pages = layout.views.map { view ->
+            pageStructure(view, showAddTile = edit.isEditing && view.id == edit.editingViewId)
+        }
+        if (pageCache.size > pages.size) pageCache.keys.retainAll(layout.views.mapTo(HashSet()) { it.id })
+        return LayoutStructure(
+            isLoaded = selection != null,
+            pages = pages,
+            currentPage = layout.views.indexOfFirst { it.id == currentViewId }.coerceAtLeast(0),
             viewNames = layout.views.associate { it.id to it.name },
-            packing = packing,
             isEditing = edit.isEditing,
             isDirty = edit.isDirty,
             linkTargets = edit.linkTargets,
-            showAddTile = showAddTile,
         )
+    }
+
+    /** Re-packs [view] only if it (or whether it shows the "＋" tile) changed since the last build. */
+    private fun pageStructure(view: DashboardView, showAddTile: Boolean): PageStructure {
+        val cached = pageCache[view.id]
+        if (cached != null && cached.showAddTile == showAddTile && cached.view == view) return cached
+        val realCount = view.tiles.size
+        val totalCount = realCount + if (showAddTile) 1 else 0
+        val packing = packer.pack(
+            view.grid.columns,
+            totalCount,
+            colSpanOf = { i -> if (i < realCount) view.tiles[i].colSpan else 1 },
+            rowSpanOf = { i -> if (i < realCount) view.tiles[i].rowSpan else 1 },
+        )
+        return PageStructure(view, showAddTile, packing).also { pageCache[view.id] = it }
+    }
+
+    private fun PageStructure.toUi(viewNames: Map<String, String>, entities: Map<String, HaEntity>): DashboardPageUi {
+        val tiles = view.tiles.map { tile ->
+            when (val content = tile.content) {
+                is TileContent.Entity -> content.toUiState(tile.id, tile.colSpan, tile.rowSpan, entities)
+                is TileContent.Spacer -> SpacerTileUiState(tile.id, tile.colSpan, tile.rowSpan)
+                is TileContent.ViewLink -> ViewLinkTileUiState(
+                    id = tile.id,
+                    targetViewId = content.targetViewId,
+                    label = content.label ?: viewNames[content.targetViewId],
+                    colSpan = tile.colSpan,
+                    rowSpan = tile.rowSpan,
+                    rawLabel = content.label,
+                    targetViewName = viewNames[content.targetViewId],
+                )
+            }
+        }
+        return DashboardPageUi(
+            viewId = view.id,
+            name = view.name,
+            grid = view.grid,
+            tiles = if (showAddTile) tiles + AddTileUiState() else tiles,
+            packing = packing,
+        )
+    }
+
+    /** Keeps the previous instance of an unchanged page, so the screen can skip recomposing it. */
+    private fun reuseIfEqual(page: DashboardPageUi): DashboardPageUi {
+        val previous = lastPages[page.viewId]
+        if (previous == page) return previous
+        lastPages[page.viewId] = page
+        return page
     }
 
     private fun TileContent.Entity.toUiState(
@@ -346,8 +503,14 @@ class DashboardViewModel(
     }
 
     companion object {
-        fun factory(haRepository: HaRepository, dashboardLayoutStore: DashboardLayoutStore) = viewModelFactory {
-            initializer { DashboardViewModel(haRepository, dashboardLayoutStore) }
+        fun factory(
+            haRepository: HaRepository,
+            dashboardLayoutStore: DashboardLayoutStore,
+            viewPreferencesStore: DashboardViewPreferencesStore,
+        ) = viewModelFactory {
+            initializer {
+                DashboardViewModel(haRepository, dashboardLayoutStore, viewPreferencesStore = viewPreferencesStore)
+            }
         }
     }
 }

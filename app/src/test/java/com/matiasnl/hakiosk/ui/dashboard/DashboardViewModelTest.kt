@@ -28,7 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
+import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferences
+import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardViewPreferencesStore
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
@@ -538,6 +541,148 @@ class DashboardViewModelTest {
         assertEquals(originalLayout, layoutStore.layout.value)
     }
 
+    // --- Multiple views ---
+
+    private fun multiViewModel(
+        layout: DashboardLayout = threeViewLayout(),
+        preferences: InMemoryDashboardViewPreferencesStore = InMemoryDashboardViewPreferencesStore(),
+        repository: FakeHaRepository = FakeHaRepository(listOf(entity("light.kitchen", "off", "Kitchen"))),
+    ): Triple<DashboardViewModel, InMemoryDashboardLayoutStore, InMemoryDashboardViewPreferencesStore> {
+        val layoutStore = InMemoryDashboardLayoutStore(layout)
+        val viewModel = DashboardViewModel(
+            repository,
+            layoutStore,
+            FakeDashboardIdProvider(),
+            viewPreferencesStore = preferences,
+        )
+        return Triple(viewModel, layoutStore, preferences)
+    }
+
+    @Test
+    fun `builds one page per view with its own grid, tiles and packing`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isLoaded)
+        assertEquals(listOf("v1", "v2", "v3"), state.pages.map { it.viewId })
+        assertEquals(listOf("Principal", "Planta alta", "Vacía"), state.pages.map { it.name })
+        assertEquals(0, state.currentPage)
+
+        val (first, second, third) = state.pages
+        assertEquals(DashboardGrid(columns = 2, rows = 2), first.grid)
+        assertEquals(listOf("a-light", "a-link"), first.tiles.map { it.id })
+        assertEquals(listOf(GridPlacement(0, 0, 2, 1), GridPlacement(1, 0, 1, 1)), first.packing.placements)
+
+        assertEquals(DashboardGrid(columns = 3, rows = 1), second.grid)
+        assertEquals(listOf("b-spacer", "b-link"), second.tiles.map { it.id })
+        assertEquals(listOf(GridPlacement(0, 0, 1, 2), GridPlacement(0, 1, 1, 1)), second.packing.placements)
+
+        assertTrue(third.tiles.isEmpty())
+        assertEquals(0, third.packing.placements.size)
+    }
+
+    @Test
+    fun `entity updates re-pack no page and keep unaffected pages as the same instance`() = runTest {
+        val repository = FakeHaRepository(listOf(entity("light.kitchen", "off", "Kitchen")))
+        val (viewModel, _, _) = multiViewModel(repository = repository)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val before = viewModel.uiState.value
+
+        viewModel.onTileClick(before.pages[0].tiles.filterIsInstance<DashboardTileUiState>().single())
+
+        val after = viewModel.uiState.value
+        assertTrue((after.pages[0].tiles[0] as DashboardTileUiState).isOn)
+        before.pages.zip(after.pages).forEach { (old, new) -> assertSame(old.packing, new.packing) }
+        assertSame(before.pages[1], after.pages[1])
+        assertSame(before.pages[2], after.pages[2])
+    }
+
+    @Test
+    fun `editing one view re-packs only that view's page`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        val before = viewModel.uiState.value
+
+        viewModel.addSpacerTile()
+
+        val after = viewModel.uiState.value
+        assertTrue(before.pages[0].packing !== after.pages[0].packing)
+        assertSame(before.pages[1].packing, after.pages[1].packing)
+        assertSame(before.pages[2].packing, after.pages[2].packing)
+    }
+
+    @Test
+    fun `opens the persisted last view`() = runTest {
+        val (viewModel, _, _) = multiViewModel(
+            preferences = InMemoryDashboardViewPreferencesStore(DashboardViewPreferences(lastViewId = "v2")),
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertEquals(1, viewModel.uiState.value.currentPage)
+        assertEquals("v2", viewModel.uiState.value.viewId)
+    }
+
+    @Test
+    fun `falls back to the first view when the persisted last view no longer exists`() = runTest {
+        val (viewModel, _, _) = multiViewModel(
+            preferences = InMemoryDashboardViewPreferencesStore(DashboardViewPreferences(lastViewId = "deleted")),
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertEquals(0, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `settled pages become current and only the last one is persisted after the debounce`() = runTest {
+        val (viewModel, _, preferences) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onPageSettled("v2")
+        advanceTimeBy(LAST_VIEW_SAVE_DEBOUNCE_MILLIS / 2)
+        viewModel.onPageSettled("v3")
+        assertEquals(2, viewModel.uiState.value.currentPage)
+        assertEquals(0, preferences.writes)
+
+        advanceTimeBy(LAST_VIEW_SAVE_DEBOUNCE_MILLIS + 1)
+
+        assertEquals(1, preferences.writes)
+        assertEquals("v3", preferences.preferences.value.lastViewId)
+    }
+
+    @Test
+    fun `settling on the already persisted view or an unknown view writes nothing`() = runTest {
+        val (viewModel, _, preferences) = multiViewModel(
+            preferences = InMemoryDashboardViewPreferencesStore(DashboardViewPreferences(lastViewId = "v2")),
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onPageSettled("v2")
+        viewModel.onPageSettled("nope")
+        advanceTimeBy(LAST_VIEW_SAVE_DEBOUNCE_MILLIS * 2)
+
+        assertEquals(1, viewModel.uiState.value.currentPage)
+        assertEquals(0, preferences.writes)
+    }
+
+    @Test
+    fun `edit mode targets the current view and page settles are ignored while editing`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v2")
+
+        viewModel.enterEditMode()
+        viewModel.addSpacerTile()
+        viewModel.onPageSettled("v1")
+
+        val state = viewModel.uiState.value
+        assertEquals(1, state.currentPage)
+        assertEquals(listOf("b-spacer", "b-link", "id-1", AddTileUiState.ID), state.tiles.map { it.id })
+        assertFalse(state.pages[0].tiles.any { it is AddTileUiState })
+        assertEquals(listOf(LinkTargetOption("v1", "Principal"), LinkTargetOption("v3", "Vacía")), state.linkTargets)
+    }
+
     @Test
     fun `isDirty flips once an edit is made`() = runTest {
         val (viewModel, _) = editingViewModel()
@@ -552,6 +697,34 @@ class DashboardViewModelTest {
 }
 
 private fun DashboardUiState.entityTiles(): List<DashboardTileUiState> = tiles.filterIsInstance<DashboardTileUiState>()
+
+/**
+ * v1 "Principal" (2×2): a 2-wide light and a link to v2. v2 "Planta alta" (3×1): a 1×2 spacer and a
+ * link to a missing view. v3 "Vacía": no tiles.
+ */
+private fun threeViewLayout() = DashboardLayout(
+    views = listOf(
+        DashboardView(
+            id = "v1",
+            name = "Principal",
+            grid = DashboardGrid(columns = 2, rows = 2),
+            tiles = listOf(
+                DashboardTile("a-light", TileContent.Entity("light.kitchen"), colSpan = 2),
+                DashboardTile("a-link", TileContent.ViewLink("v2")),
+            ),
+        ),
+        DashboardView(
+            id = "v2",
+            name = "Planta alta",
+            grid = DashboardGrid(columns = 3, rows = 1),
+            tiles = listOf(
+                DashboardTile("b-spacer", TileContent.Spacer, rowSpan = 2),
+                DashboardTile("b-link", TileContent.ViewLink("gone")),
+            ),
+        ),
+        DashboardView(id = "v3", name = "Vacía"),
+    ),
+)
 
 /** view-1 (3×2 grid): a 2×2 light, a spacer, a link to view-2 and an oversized link to a missing view. */
 private fun mixedLayout() = DashboardLayout(

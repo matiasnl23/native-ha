@@ -76,10 +76,17 @@ class DashboardEditController(
         _state.value = DashboardEditState()
     }
 
-    /** Persists the working copy in one store update and exits edit mode. No-op outside edit mode. */
-    suspend fun done() {
+    /**
+     * Persists the working copy in one store update and exits edit mode. No-op outside edit mode.
+     *
+     * [awaitPersisted] runs between the write and leaving edit mode, so a caller can wait until the
+     * store's flow reflects the written layout; otherwise a store that echoes asynchronously would
+     * briefly render the old layout (and, with several views, possibly a different page).
+     */
+    suspend fun done(awaitPersisted: suspend (DashboardLayout) -> Unit = {}) {
         val working = _state.value.working ?: return
         layoutStore.update { working }
+        awaitPersisted(working)
         _state.value = DashboardEditState()
     }
 
