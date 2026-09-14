@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.setup
 
+import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaConnectionTestResult
 import com.matiasnl.hakiosk.data.ha.HaEntity
@@ -8,9 +9,12 @@ import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.InMemoryHaConfigStore
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
@@ -19,6 +23,26 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+
+/**
+ * [HaConfigStore] whose [config] flow only emits once [release] is called, to reproduce the race
+ * between the async load in [SetupViewModel]'s init and the user editing fields in the meantime.
+ */
+private class GatedHaConfigStore(private val stored: HaServerConfig?) : HaConfigStore {
+    private val gate = CompletableDeferred<Unit>()
+
+    override val config: Flow<HaServerConfig?> = flow {
+        gate.await()
+        emit(stored)
+    }
+
+    override suspend fun save(config: HaServerConfig) {}
+    override suspend fun clear() {}
+
+    fun release() {
+        gate.complete(Unit)
+    }
+}
 
 /** Test double with a scriptable [testConnection] result, since [FakeHaRepository] always succeeds. */
 private class ScriptedHaRepository(
@@ -162,6 +186,37 @@ class SetupViewModelTest {
         val state = viewModel.uiState.value
         assertEquals("https://ha.local", state.baseUrl)
         assertEquals("existing-token", state.token)
+        assertTrue(state.isEditingExisting)
+    }
+
+    @Test
+    fun `late-arriving stored config does not overwrite fields the user already typed`() = runTest {
+        val configStore = GatedHaConfigStore(HaServerConfig("https://stored.local", "stored-token"))
+        val viewModel = SetupViewModel(ScriptedHaRepository(), configStore)
+
+        // The user starts typing before the store's load (gated) resolves.
+        viewModel.onBaseUrlChange("https://typed.local")
+        viewModel.onTokenChange("typed-token")
+
+        configStore.release()
+
+        val state = viewModel.uiState.value
+        assertEquals("https://typed.local", state.baseUrl)
+        assertEquals("typed-token", state.token)
+        // We still learned a config exists, so disconnect should be offered.
+        assertTrue(state.isEditingExisting)
+    }
+
+    @Test
+    fun `stored config is applied when it arrives before the user types anything`() = runTest {
+        val configStore = GatedHaConfigStore(HaServerConfig("https://stored.local", "stored-token"))
+        val viewModel = SetupViewModel(ScriptedHaRepository(), configStore)
+
+        configStore.release()
+
+        val state = viewModel.uiState.value
+        assertEquals("https://stored.local", state.baseUrl)
+        assertEquals("stored-token", state.token)
         assertTrue(state.isEditingExisting)
     }
 }

@@ -52,21 +52,36 @@ class SetupViewModel(
     private val _uiState = MutableStateFlow(SetupUiState())
     val uiState: StateFlow<SetupUiState> = _uiState.asStateFlow()
 
+    /**
+     * True once the user has typed into either field. The stored config loads asynchronously
+     * (init below); if it arrives after the user already started typing, we must not clobber
+     * what they entered.
+     */
+    private var fieldsTouched = false
+
     init {
         viewModelScope.launch {
             haConfigStore.config.first()?.let { config ->
                 _uiState.update {
-                    it.copy(baseUrl = config.baseUrl, token = config.token, isEditingExisting = true)
+                    if (fieldsTouched) {
+                        // Keep whatever the user already typed, but we now know a config exists
+                        // so e.g. the disconnect option should still be offered.
+                        it.copy(isEditingExisting = true)
+                    } else {
+                        it.copy(baseUrl = config.baseUrl, token = config.token, isEditingExisting = true)
+                    }
                 }
             }
         }
     }
 
     fun onBaseUrlChange(value: String) {
+        fieldsTouched = true
         _uiState.update { it.copy(baseUrl = value, urlError = null, testStatus = ConnectionTestStatus.Idle) }
     }
 
     fun onTokenChange(value: String) {
+        fieldsTouched = true
         _uiState.update { it.copy(token = value, tokenBlankError = false, testStatus = ConnectionTestStatus.Idle) }
     }
 
