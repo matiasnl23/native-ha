@@ -29,8 +29,11 @@ entidades exponer), proyectos `kiosk-satellite` y `FreeKiosk` (patrones de Devic
 2. **MVP2** ✅ — Cámaras: vista en foco vía go2rtc/WebRTC + miniaturas por snapshot en el grid.
    - **Rediseño del dashboard** ✅ — modo edición, tiles redimensionables, drag & drop, múltiples
      vistas y botones inteligentes (luces, alarma). Ver [`docs/UI-REWORK.md`](docs/UI-REWORK.md).
-3. **MVP3** — Cliente MQTT + Discovery para control remoto desde HA, y Device Owner opcional
-   (modo kiosko estricto + reinicio remoto).
+3. **MVP3** — Cliente MQTT + Discovery para control remoto desde HA. Ver
+   [`docs/MVP3-MQTT.md`](docs/MVP3-MQTT.md).
+
+Ideas evaluadas para más adelante (apagado real de pantalla, actualización remota de la app, Device
+Owner y otras mejoras): [`docs/FUTURE-FEATURES.md`](docs/FUTURE-FEATURES.md).
 
 ## Entorno de desarrollo
 
