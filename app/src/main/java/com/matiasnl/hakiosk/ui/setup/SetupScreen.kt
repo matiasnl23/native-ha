@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -85,6 +88,12 @@ private fun SetupContent(
                         TextButton(onClick = onBack) { Text(stringResource(R.string.setup_back)) }
                     }
                 },
+                // Always reachable, even when the form doesn't fit (tablet in landscape, keyboard open).
+                actions = {
+                    TextButton(onClick = onSave, enabled = uiState.canSave) {
+                        Text(stringResource(R.string.setup_save))
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -92,6 +101,8 @@ private fun SetupContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
