@@ -75,7 +75,9 @@ private fun EditorContent(
                     TextButton(onClick = onBack) { Text(stringResource(R.string.setup_back)) }
                 },
                 actions = {
-                    TextButton(onClick = onSave) { Text(stringResource(R.string.editor_save)) }
+                    TextButton(onClick = onSave, enabled = uiState.isLoaded) {
+                        Text(stringResource(R.string.editor_save))
+                    }
                 },
             )
         },

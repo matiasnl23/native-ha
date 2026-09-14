@@ -39,6 +39,8 @@ data class EditorUiState(
     val domains: List<String> = emptyList(),
     val query: String = "",
     val domainFilter: String? = null,
+    /** False until the stored tile list has finished loading once. */
+    val isLoaded: Boolean = false,
 )
 
 /**
@@ -53,10 +55,21 @@ class EditorViewModel(
     private val _workingTiles = MutableStateFlow<List<DashboardTile>>(emptyList())
     private val _query = MutableStateFlow("")
     private val _domainFilter = MutableStateFlow<String?>(null)
+    private val _isLoaded = MutableStateFlow(false)
+
+    /**
+     * Edits applied to [_workingTiles] before [dashboardConfigStore] finished its initial load.
+     * Replayed on top of the loaded list once it arrives so they aren't lost, without discarding
+     * whatever was already stored on disk.
+     */
+    private val pendingEditsBeforeLoad = mutableListOf<(List<DashboardTile>) -> List<DashboardTile>>()
 
     init {
         viewModelScope.launch {
-            _workingTiles.value = dashboardConfigStore.tiles.first()
+            val loaded = dashboardConfigStore.tiles.first()
+            _workingTiles.value = pendingEditsBeforeLoad.fold(loaded) { tiles, edit -> edit(tiles) }
+            pendingEditsBeforeLoad.clear()
+            _isLoaded.value = true
         }
     }
 
@@ -65,15 +78,25 @@ class EditorViewModel(
         haRepository.entities,
         _query,
         _domainFilter,
-    ) { tiles, entities, query, domainFilter ->
-        buildUiState(tiles, entities, query, domainFilter)
+        _isLoaded,
+    ) { tiles, entities, query, domainFilter, isLoaded ->
+        buildUiState(tiles, entities, query, domainFilter, isLoaded)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EditorUiState())
+
+    /** Applies [edit] to the working tiles now, and again once a pending initial load arrives. */
+    private fun editWorkingTiles(edit: (List<DashboardTile>) -> List<DashboardTile>) {
+        _workingTiles.update(edit)
+        if (!_isLoaded.value) {
+            pendingEditsBeforeLoad += edit
+        }
+    }
 
     private fun buildUiState(
         tiles: List<DashboardTile>,
         entities: Map<String, HaEntity>,
         query: String,
         domainFilter: String?,
+        isLoaded: Boolean,
     ): EditorUiState {
         val tileIds = tiles.map { it.entityId }.toSet()
         val currentTiles = tiles.map { tile ->
@@ -110,6 +133,7 @@ class EditorViewModel(
             domains = domains,
             query = query,
             domainFilter = domainFilter,
+            isLoaded = isLoaded,
         )
     }
 
@@ -122,28 +146,28 @@ class EditorViewModel(
     }
 
     fun addTile(entityId: String) {
-        _workingTiles.update { tiles ->
+        editWorkingTiles { tiles ->
             if (tiles.any { it.entityId == entityId }) tiles else tiles + DashboardTile(entityId)
         }
     }
 
     fun removeTile(entityId: String) {
-        _workingTiles.update { tiles -> tiles.filterNot { it.entityId == entityId } }
+        editWorkingTiles { tiles -> tiles.filterNot { it.entityId == entityId } }
     }
 
     fun setLabel(entityId: String, label: String) {
         val trimmed = label.trim()
-        _workingTiles.update { tiles ->
+        editWorkingTiles { tiles ->
             tiles.map { if (it.entityId == entityId) it.copy(label = trimmed.ifEmpty { null }) else it }
         }
     }
 
     fun moveUp(entityId: String) {
-        _workingTiles.update { tiles -> tiles.moved(entityId, -1) }
+        editWorkingTiles { tiles -> tiles.moved(entityId, -1) }
     }
 
     fun moveDown(entityId: String) {
-        _workingTiles.update { tiles -> tiles.moved(entityId, +1) }
+        editWorkingTiles { tiles -> tiles.moved(entityId, +1) }
     }
 
     private fun List<DashboardTile>.moved(entityId: String, delta: Int): List<DashboardTile> {
