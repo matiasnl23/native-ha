@@ -20,10 +20,10 @@ class DisplayPreferencesStoreTest {
         )
 
     @Test
-    fun `defaults to full brightness, no screen-off timeout and 60s camera auto-close`() = runTest {
+    fun `defaults to the system brightness, no screen-off timeout and 60s camera auto-close`() = runTest {
         val store = dataStoreStore()
 
-        assertEquals(DisplayPreferences(100, 0, 60), store.preferences.first())
+        assertEquals(DisplayPreferences(null, 0, 60), store.preferences.first())
     }
 
     @Test

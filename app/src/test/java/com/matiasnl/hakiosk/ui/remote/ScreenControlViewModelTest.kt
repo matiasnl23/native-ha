@@ -35,7 +35,7 @@ class ScreenControlViewModelTest {
 
         val state = viewModel.uiState.value
         assertTrue(state.screenOn)
-        assertEquals(100, state.brightnessPercent)
+        assertEquals(null, state.brightnessPercent)
         assertEquals(0, state.screenOffTimeoutMinutes)
         assertEquals(60, state.cameraCloseAfterSeconds)
     }

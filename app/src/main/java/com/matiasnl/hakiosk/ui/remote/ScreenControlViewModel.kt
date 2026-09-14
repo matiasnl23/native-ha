@@ -23,7 +23,8 @@ private const val MILLIS_PER_MINUTE = 60_000L
 /** Screen on/off, brightness and the persisted values Home Assistant can change remotely. */
 data class ScreenControlUiState(
     val screenOn: Boolean = true,
-    val brightnessPercent: Int = 100,
+    /** App window brightness 0..100, or null to follow the system brightness (none set remotely yet). */
+    val brightnessPercent: Int? = null,
     val screenOffTimeoutMinutes: Int = 0,
     val cameraCloseAfterSeconds: Int = 60,
 )

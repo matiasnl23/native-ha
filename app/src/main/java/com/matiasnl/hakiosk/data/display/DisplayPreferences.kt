@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
-/** Default app window brightness, 0..100. */
+/** Brightness reported to Home Assistant while the app follows the system brightness (none set remotely). */
 const val DEFAULT_BRIGHTNESS_PERCENT = 100
 
 /** Default "screen off after inactivity" timeout in minutes; 0 = never. */
@@ -29,7 +29,11 @@ const val DEFAULT_CAMERA_CLOSE_AFTER_SECONDS = 60
  * the MQTT broker config.
  */
 data class DisplayPreferences(
-    val brightnessPercent: Int = DEFAULT_BRIGHTNESS_PERCENT,
+    /**
+     * App window brightness 0..100, or null (the default) to follow the system brightness, including
+     * adaptive brightness. Only set once Home Assistant sends a brightness.
+     */
+    val brightnessPercent: Int? = null,
     val screenOffTimeoutMinutes: Int = DEFAULT_SCREEN_OFF_TIMEOUT_MINUTES,
     val cameraCloseAfterSeconds: Int = DEFAULT_CAMERA_CLOSE_AFTER_SECONDS,
 )
@@ -64,7 +68,7 @@ class DataStoreDisplayPreferencesStore(
         .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
         .map { prefs ->
             DisplayPreferences(
-                brightnessPercent = sanitizeBrightnessPercent(prefs[BRIGHTNESS_PERCENT_KEY] ?: DEFAULT_BRIGHTNESS_PERCENT),
+                brightnessPercent = prefs[BRIGHTNESS_PERCENT_KEY]?.let(::sanitizeBrightnessPercent),
                 screenOffTimeoutMinutes = sanitizeNonNegative(
                     prefs[SCREEN_OFF_TIMEOUT_MINUTES_KEY] ?: DEFAULT_SCREEN_OFF_TIMEOUT_MINUTES,
                 ),

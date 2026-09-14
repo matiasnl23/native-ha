@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.device.DeviceUiState
 import com.matiasnl.hakiosk.data.device.RemoteControlBridge
+import com.matiasnl.hakiosk.data.display.DEFAULT_BRIGHTNESS_PERCENT
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,7 +54,8 @@ class DeviceUiStateReporter(
                     cameras = cameraOptionsFrom(layout, entities),
                     openCameraEntityId = navigation.openCameraEntityId,
                     screenOn = screen.screenOn,
-                    brightnessPercent = screen.brightnessPercent,
+                    // The contract has no "follow the system" value: report full brightness until HA sets one.
+                    brightnessPercent = screen.brightnessPercent ?: DEFAULT_BRIGHTNESS_PERCENT,
                     screenOffTimeoutMinutes = screen.screenOffTimeoutMinutes,
                     cameraCloseAfterSeconds = screen.cameraCloseAfterSeconds,
                     lastInteractionEpochMillis = lastInteraction,
