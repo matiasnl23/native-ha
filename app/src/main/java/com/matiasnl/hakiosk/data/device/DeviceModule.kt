@@ -1,14 +1,61 @@
 package com.matiasnl.hakiosk.data.device
 
 import android.content.Context
-import com.matiasnl.hakiosk.data.device.fake.FakeMqttRemoteControl
-import com.matiasnl.hakiosk.data.device.fake.InMemoryMqttConfigStore
+import android.net.ConnectivityManager
+import android.util.Log
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.preferencesDataStoreFile
+import com.matiasnl.hakiosk.data.device.mqtt.ConnectivityNetworkMonitor
+import com.matiasnl.hakiosk.data.device.mqtt.HiveMqClientFactory
+import com.matiasnl.hakiosk.data.device.mqtt.MqttConnectionManager
+import com.matiasnl.hakiosk.data.device.mqtt.MqttMessaging
+import com.matiasnl.hakiosk.data.device.service.AndroidRemoteControlServiceController
+import com.matiasnl.hakiosk.data.device.store.DataStoreMqttConfigStore
+import com.matiasnl.hakiosk.data.device.store.MqttDeviceIdProvider
+import com.matiasnl.hakiosk.data.ha.store.KeystoreTokenCipher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /** Wires remote control. The MQTT parts are owned by the device-control work stream. One instance per process. */
-class DeviceModule(@Suppress("unused") private val context: Context) {
+class DeviceModule(context: Context) {
+    private val appContext = context.applicationContext
+
     val remoteControlBridge: RemoteControlBridge by lazy { InMemoryRemoteControlBridge() }
 
-    // Fakes until the MQTT implementation lands.
-    val mqttConfigStore: MqttConfigStore by lazy { InMemoryMqttConfigStore() }
-    val mqttRemoteControl: MqttRemoteControl by lazy { FakeMqttRemoteControl() }
+    private val dataStore by lazy {
+        PreferenceDataStoreFactory.create(
+            produceFile = { appContext.preferencesDataStoreFile(DataStoreMqttConfigStore.DATASTORE_NAME) },
+        )
+    }
+
+    private val configStore by lazy {
+        DataStoreMqttConfigStore(dataStore, KeystoreTokenCipher(DataStoreMqttConfigStore.PASSWORD_KEY_ALIAS))
+    }
+
+    // Process-wide: the connection outlives activities (kept alive by RemoteControlService).
+    private val connectionManager by lazy {
+        MqttConnectionManager(
+            configStore = configStore,
+            deviceIdProvider = configStore,
+            clientFactory = HiveMqClientFactory(),
+            networkMonitor = ConnectivityNetworkMonitor(appContext.getSystemService(ConnectivityManager::class.java)),
+            serviceController = AndroidRemoteControlServiceController(appContext),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            log = { Log.i(TAG, it) },
+        )
+    }
+
+    val mqttConfigStore: MqttConfigStore get() = configStore
+    val mqttRemoteControl: MqttRemoteControl get() = connectionManager
+
+    /** Stable id of this install (MQTT topics, client id, Home Assistant unique ids). For stage 2. */
+    val mqttDeviceIdProvider: MqttDeviceIdProvider get() = configStore
+
+    /** Publish/subscribe over the managed connection. For stage 2 (Discovery, commands, state). */
+    val mqttMessaging: MqttMessaging get() = connectionManager
+
+    private companion object {
+        const val TAG = "RemoteControl"
+    }
 }
