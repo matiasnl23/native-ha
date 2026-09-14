@@ -89,7 +89,7 @@ class EditorViewModel(
     private val idProvider: DashboardIdProvider = UuidDashboardIdProvider,
 ) : ViewModel() {
 
-    private val _workingLayout = MutableStateFlow(defaultDashboardLayout(idProvider))
+    private val _workingLayout = MutableStateFlow(defaultDashboardLayout())
     private val _query = MutableStateFlow("")
     private val _domainFilter = MutableStateFlow<String?>(null)
     private val _floorFilter = MutableStateFlow<String?>(null)

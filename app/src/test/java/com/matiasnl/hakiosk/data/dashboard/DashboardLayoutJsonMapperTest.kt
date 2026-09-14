@@ -43,6 +43,22 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `default layout keeps the same view id across decodes so edits by view id still apply`() {
+        val first = DashboardLayoutJsonMapper.decode(newFormatJson = null, legacyTilesJson = null)
+        val second = DashboardLayoutJsonMapper.decode(newFormatJson = null, legacyTilesJson = null)
+        val corrupt = DashboardLayoutJsonMapper.decode(newFormatJson = "{not json", legacyTilesJson = null)
+
+        assertEquals(DEFAULT_VIEW_ID, first.layout.views.single().id)
+        assertEquals(first.layout, second.layout)
+        assertEquals(DEFAULT_VIEW_ID, corrupt.layout.views.single().id)
+
+        // What the store does inside update(): rebuild the default, then apply an edit addressed by id.
+        val tile = newDashboardTile(TileContent.Spacer, idProvider = FakeDashboardIdProvider())
+        val edited = second.layout.addTile(first.layout.views.single().id, tile)
+        assertEquals(listOf(tile), edited.views.single().tiles)
+    }
+
+    @Test
     fun `decode migrates the legacy tile list into one Principal view, in order, with labels kept`() {
         val legacyJson = """[{"entityId":"light.kitchen"},{"entityId":"light.living_room","label":"Salón"}]"""
 

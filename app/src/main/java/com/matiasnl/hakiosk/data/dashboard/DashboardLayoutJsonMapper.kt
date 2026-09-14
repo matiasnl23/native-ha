@@ -55,7 +55,7 @@ object DashboardLayoutJsonMapper {
                 .getOrNull()
                 ?.takeIf { it.views.isNotEmpty() }
                 ?.let { DashboardLayout(it.views) }
-            return DecodedDashboardLayout(layout ?: defaultDashboardLayout(idProvider), shouldPersist = false)
+            return DecodedDashboardLayout(layout ?: defaultDashboardLayout(), shouldPersist = false)
         }
         if (legacyTilesJson != null) {
             val legacyTiles = runCatching { json.decodeFromString<List<LegacyDashboardTile>>(legacyTilesJson) }.getOrNull()
@@ -67,6 +67,6 @@ object DashboardLayoutJsonMapper {
                 return DecodedDashboardLayout(DashboardLayout(views = listOf(view)), shouldPersist = true)
             }
         }
-        return DecodedDashboardLayout(defaultDashboardLayout(idProvider), shouldPersist = false)
+        return DecodedDashboardLayout(defaultDashboardLayout(), shouldPersist = false)
     }
 }

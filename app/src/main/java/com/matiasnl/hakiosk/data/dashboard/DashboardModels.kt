@@ -91,8 +91,15 @@ fun newDashboardTile(
 )
 
 /**
- * A brand-new single-view layout: one empty view named [PRINCIPAL_VIEW_NAME]. Used when nothing is
- * stored yet, and as the fallback when persisted data can't be read.
+ * Id of the view in [defaultDashboardLayout]. Fixed on purpose: the default layout is rebuilt on every
+ * read while nothing is persisted, and edits addressed by view id (e.g. "add a tile to the view the UI
+ * is showing") must still find that view when the store rebuilds it inside an update.
  */
-fun defaultDashboardLayout(idProvider: DashboardIdProvider = UuidDashboardIdProvider): DashboardLayout =
-    DashboardLayout(views = listOf(DashboardView(id = idProvider.newId(), name = PRINCIPAL_VIEW_NAME)))
+const val DEFAULT_VIEW_ID = "main"
+
+/**
+ * A brand-new single-view layout: one empty view named [PRINCIPAL_VIEW_NAME] with [DEFAULT_VIEW_ID].
+ * Used when nothing is stored yet, and as the fallback when persisted data can't be read.
+ */
+fun defaultDashboardLayout(): DashboardLayout =
+    DashboardLayout(views = listOf(DashboardView(id = DEFAULT_VIEW_ID, name = PRINCIPAL_VIEW_NAME)))

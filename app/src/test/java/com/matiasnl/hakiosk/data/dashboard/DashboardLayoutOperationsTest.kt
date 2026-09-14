@@ -289,7 +289,7 @@ class DashboardLayoutOperationsTest {
 
     @Test
     fun `defaultDashboardLayout has one empty Principal view`() {
-        val layout = defaultDashboardLayout(FakeDashboardIdProvider())
+        val layout = defaultDashboardLayout()
 
         val singleView = layout.views.single()
         assertEquals(PRINCIPAL_VIEW_NAME, singleView.name)
