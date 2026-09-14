@@ -30,18 +30,20 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * Periodically refreshed snapshot of a camera, sized to where it's laid out. Polls only while in
- * composition (a visible grid item) and while the lifecycle is at least STARTED.
+ * Periodically refreshed snapshot of a camera, sized to where it's laid out. Polls only while
+ * [active] (e.g. the tile is inside the viewport), in composition, and while the lifecycle is at
+ * least STARTED. When it becomes inactive the last image stays on screen.
  */
 @Composable
 fun CameraThumbnail(
     entityId: String,
     snapshots: CameraSnapshotRepository<ImageBitmap>,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
-    val images = remember(entityId, size) {
-        if (size.width <= 0 || size.height <= 0) {
+    val images = remember(entityId, size, active) {
+        if (!active || size.width <= 0 || size.height <= 0) {
             emptyFlow()
         } else {
             snapshots.snapshots(entityId, size.width, size.height, THUMBNAIL_REFRESH_INTERVAL_MS, useCache = true)
