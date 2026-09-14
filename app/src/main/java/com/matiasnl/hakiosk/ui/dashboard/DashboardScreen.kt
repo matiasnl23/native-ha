@@ -119,6 +119,7 @@ fun DashboardScreen(
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
         onDoneEdit = viewModel::doneEditMode,
+        onMoveTile = viewModel::moveEditTile,
         onEditTile = { tileId -> editingTileId = tileId },
         onAddTile = {
             viewModel.addTilePicker.reset()
@@ -258,6 +259,7 @@ private fun DashboardContent(
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
     onDoneEdit: () -> Unit,
+    onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
     onEditTile: (tileId: String) -> Unit,
     onAddTile: () -> Unit,
     onOpenGridSettings: () -> Unit,
@@ -309,6 +311,9 @@ private fun DashboardContent(
                     modifier = Modifier
                         .fillMaxSize()
                         .alpha(if (isConnected || uiState.isEditing) 1f else 0.6f),
+                    // Real tiles (spacers and view links included) are draggable; the trailing "＋" isn't.
+                    draggableCount = if (uiState.isEditing) uiState.tiles.count { it !is AddTileUiState } else 0,
+                    onMove = if (uiState.isEditing) onMoveTile else null,
                 ) { tile, placement, isVisible ->
                     if (uiState.isEditing) {
                         EditModeTileCell(
@@ -619,7 +624,10 @@ private fun EditModeTileCell(
     }
 }
 
-/** Wraps [content] with a highlighted outline and a corner edit button; the whole tile is also tappable. */
+/**
+ * Wraps [content] with a highlighted outline and a corner edit button; the whole tile is also
+ * tappable. Long-press-and-drag to reorder is handled by the grid around it.
+ */
 @Composable
 private fun EditableTileShell(
     onClick: () -> Unit,
@@ -746,6 +754,7 @@ private fun DashboardPreview() {
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
+            onMoveTile = { _, _ -> },
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
@@ -767,6 +776,7 @@ private fun DashboardEmptyPreview() {
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
+            onMoveTile = { _, _ -> },
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
@@ -806,6 +816,7 @@ private fun DashboardEditModePreview() {
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
+            onMoveTile = { _, _ -> },
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
