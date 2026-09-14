@@ -149,6 +149,9 @@ private fun DashboardContent(
                         }
                         is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
                         is ViewLinkTileUiState -> ViewLinkTileCard(tile = tile, placement = placement)
+                        // The "＋" tile only ever appears while editing; the full edit-mode grid
+                        // rendering (added next) replaces this whole branch with real affordances.
+                        is AddTileUiState -> Box(Modifier)
                     }
                 }
             }

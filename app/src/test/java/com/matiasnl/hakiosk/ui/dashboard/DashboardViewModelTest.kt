@@ -4,6 +4,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardTile
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.FakeDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.setGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import org.junit.Assert.assertSame
@@ -18,6 +19,7 @@ import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
+import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -310,6 +312,181 @@ class DashboardViewModelTest {
         assertTrue(light.isOn)
         assertEquals(2 to 2, light.colSpan to light.rowSpan)
         assertSame(before.packing, after.packing)
+    }
+
+    // --- Edit mode ---
+
+    private fun editingViewModel(
+        layout: DashboardLayout = layoutWithTile("light.kitchen"),
+        entities: List<HaEntity> = listOf(entity("light.kitchen", "off", "Kitchen")),
+    ): Pair<DashboardViewModel, InMemoryDashboardLayoutStore> {
+        val layoutStore = InMemoryDashboardLayoutStore(layout)
+        val viewModel = DashboardViewModel(FakeHaRepository(entities), layoutStore, FakeDashboardIdProvider())
+        return viewModel to layoutStore
+    }
+
+    @Test
+    fun `entering edit mode snapshots the layout and appends the add tile`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.enterEditMode()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.isEditing)
+        assertFalse(state.isDirty)
+        assertEquals("light.kitchen", state.entityTiles().single().entityId)
+        assertEquals(AddTileUiState.ID, state.tiles.last().id)
+        assertEquals(2, state.tiles.size)
+        assertEquals(2, state.packing.placements.size)
+    }
+
+    @Test
+    fun `tile taps are no-ops while editing`() = runTest {
+        val (viewModel, repository) = run {
+            val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
+            val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen"))
+            DashboardViewModel(repository, layoutStore, FakeDashboardIdProvider()) to repository
+        }
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        val tile = viewModel.uiState.value.entityTiles().single()
+        viewModel.onTileClick(tile)
+
+        assertEquals("off", repository.entities.value.getValue("light.kitchen").state)
+    }
+
+    @Test
+    fun `add entity, spacer and link tiles show up in the working copy while editing`() = runTest {
+        val layout = DashboardLayout(
+            views = listOf(DashboardView(id = "view-1", name = "Principal"), DashboardView(id = "view-2", name = "Arriba")),
+        )
+        val (viewModel, _) = editingViewModel(layout = layout, entities = emptyList())
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.addEntityTile("light.new")
+        viewModel.addSpacerTile()
+        viewModel.addLinkTile("view-2")
+
+        val tiles = viewModel.uiState.value.tiles
+        assertEquals(listOf("id-1", "id-2", "id-3", AddTileUiState.ID), tiles.map { it.id })
+        assertTrue(tiles[1] is SpacerTileUiState)
+        assertEquals("view-2", (tiles[2] as ViewLinkTileUiState).targetViewId)
+        assertEquals(listOf(LinkTargetOption("view-2", "Arriba")), viewModel.uiState.value.linkTargets)
+    }
+
+    @Test
+    fun `the add tile is never persisted`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel(entities = emptyList())
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.doneEditMode()
+
+        val persistedIds = layoutStore.layout.value.views.single().tiles.map { it.id }
+        assertFalse(AddTileUiState.ID in persistedIds)
+    }
+
+    @Test
+    fun `label edits apply and a blank label clears back to the default`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        val tileId = viewModel.uiState.value.entityTiles().single().id
+
+        viewModel.setEditTileLabel(tileId, "Cocina")
+        assertEquals("Cocina", viewModel.uiState.value.entityTiles().single().label)
+
+        viewModel.setEditTileLabel(tileId, "   ")
+        assertEquals("Kitchen", viewModel.uiState.value.entityTiles().single().label)
+    }
+
+    @Test
+    fun `resize clamps width to the view's columns`() = runTest {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "view-1",
+                    name = "Principal",
+                    grid = DashboardGrid(columns = 3, rows = 2),
+                    tiles = listOf(DashboardTile("t", TileContent.Entity("light.kitchen"))),
+                ),
+            ),
+        )
+        val (viewModel, _) = editingViewModel(layout = layout)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.resizeEditTile("t", colSpan = 9, rowSpan = 4)
+
+        val tile = viewModel.uiState.value.entityTiles().single()
+        assertEquals(3, tile.colSpan)
+        assertEquals(4, tile.rowSpan)
+    }
+
+    @Test
+    fun `remove drops the tile from the working copy`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        val tileId = viewModel.uiState.value.entityTiles().single().id
+
+        viewModel.removeEditTile(tileId)
+
+        assertTrue(viewModel.uiState.value.entityTiles().isEmpty())
+    }
+
+    @Test
+    fun `grid change applies to the working copy only until done`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.setEditGrid(DashboardGrid(columns = 6, rows = 4))
+
+        assertEquals(DashboardGrid(columns = 6, rows = 4), viewModel.uiState.value.grid)
+        assertEquals(DashboardGrid(), layoutStore.layout.value.views.single().grid)
+    }
+
+    @Test
+    fun `cancel discards the working copy and exits edit mode`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val originalLayout = layoutStore.layout.value
+        viewModel.enterEditMode()
+        viewModel.addSpacerTile()
+
+        viewModel.cancelEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(originalLayout, layoutStore.layout.value)
+    }
+
+    @Test
+    fun `done persists the working copy exactly once and exits edit mode`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        viewModel.addSpacerTile()
+
+        viewModel.doneEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(2, layoutStore.layout.value.views.single().tiles.size)
+    }
+
+    @Test
+    fun `isDirty flips once an edit is made`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        assertFalse(viewModel.uiState.value.isDirty)
+
+        viewModel.addSpacerTile()
+
+        assertTrue(viewModel.uiState.value.isDirty)
     }
 }
 

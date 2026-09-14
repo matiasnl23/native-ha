@@ -5,15 +5,22 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
+import com.matiasnl.hakiosk.data.dashboard.DashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
+import com.matiasnl.hakiosk.data.dashboard.defaultDashboardLayout
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditController
+import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
+import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
+import com.matiasnl.hakiosk.ui.picker.EntityPickerState
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -82,6 +89,20 @@ data class ViewLinkTileUiState(
     override val rowSpan: Int = 1,
 ) : DashboardTileUi
 
+/**
+ * The trailing "＋" tile shown only while editing, appended after the working copy's real tiles.
+ * Always 1×1 and never part of any [DashboardLayout] — it exists purely to open the add-tile modal.
+ */
+data class AddTileUiState(
+    override val id: String = ID,
+    override val colSpan: Int = 1,
+    override val rowSpan: Int = 1,
+) : DashboardTileUi {
+    companion object {
+        const val ID = "__add_tile__"
+    }
+}
+
 data class DashboardUiState(
     /** Id of the view being shown, null until the layout loads. */
     val viewId: String? = null,
@@ -96,6 +117,12 @@ data class DashboardUiState(
      * error or an empty dashboard.
      */
     val hasEntities: Boolean = false,
+    /** True while the dashboard renders the edit-mode working copy instead of the persisted layout. */
+    val isEditing: Boolean = false,
+    /** True once the working copy differs from what was persisted when edit mode was entered. */
+    val isDirty: Boolean = false,
+    /** Other views a "link to view" tile could target, for the add-tile modal. Empty outside edit mode. */
+    val linkTargets: List<LinkTargetOption> = emptyList(),
 )
 
 /** A camera tile was tapped: the screen should open its focus view. */
@@ -104,21 +131,32 @@ data class OpenCameraEvent(val entityId: String, val label: String)
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
 
-/** Layout-derived part of the state: only recomputed (and re-packed) when the layout changes, not on entity updates. */
+/** Layout-derived part of the state: only recomputed (and re-packed) when the layout or edit state changes, not on entity updates. */
 private data class ViewStructure(
     val view: DashboardView?,
     val viewNames: Map<String, String>,
     val packing: GridPacking,
+    val isEditing: Boolean,
+    val isDirty: Boolean,
+    val linkTargets: List<LinkTargetOption>,
+    /** True once a trailing "＋" placeholder was folded into [packing] (edit mode only). */
+    val showAddTile: Boolean,
 )
 
 /**
  * Shows the first view: all its tiles in order (entity tiles joined with live entity state, spacers
  * and view links), its grid settings and the dense packing of the tiles. Maps taps on entity tiles to
  * Home Assistant service calls.
+ *
+ * Also owns edit mode: [enterEditMode] snapshots the current layout into a working copy (via
+ * [editController]) that [uiState] renders instead of the persisted layout until [doneEditMode]
+ * persists it or [cancelEditMode] discards it. Entity tile taps are no-ops while editing — see
+ * [onTileClick] — since a tap on a tile then opens its edit modal instead (a screen-level concern).
  */
 class DashboardViewModel(
     private val haRepository: HaRepository,
-    dashboardLayoutStore: DashboardLayoutStore,
+    private val dashboardLayoutStore: DashboardLayoutStore,
+    idProvider: DashboardIdProvider = UuidDashboardIdProvider,
 ) : ViewModel() {
 
     private val _errorEvents = MutableSharedFlow<DashboardActionError>(extraBufferCapacity = 1)
@@ -134,9 +172,30 @@ class DashboardViewModel(
     /** Only used from the sequential layout flow below. */
     private val packer = GridPacker()
 
-    private val structure = dashboardLayoutStore.layout
+    private val editController = DashboardEditController(dashboardLayoutStore, idProvider)
+
+    /**
+     * Latest known persisted layout, kept eagerly so [enterEditMode] can snapshot it even before the
+     * screen has subscribed to [uiState].
+     */
+    private val layoutState: StateFlow<DashboardLayout> = dashboardLayoutStore.layout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, defaultDashboardLayout())
+
+    /** Ids of the working copy's current-view entity tiles, for the add-tile modal's [EntityPicker]. */
+    private val editingEntityIds = editController.state
+        .map { edit -> edit.editingView?.tiles.orEmpty().mapNotNullTo(HashSet()) { (it.content as? TileContent.Entity)?.entityId } }
         .distinctUntilChanged()
-        .map { layout -> layout.toStructure() }
+
+    /** Entity search/filter state for the "Entidad" option of the add-tile modal. */
+    val addTilePicker = EntityPickerState(
+        scope = viewModelScope,
+        haRepository = haRepository,
+        alreadyAddedIds = editingEntityIds,
+    )
+
+    private val structure = combine(dashboardLayoutStore.layout, editController.state) { stored, edit ->
+        buildStructure(stored, edit)
+    }.distinctUntilChanged()
 
     val uiState: StateFlow<DashboardUiState> = combine(
         structure,
@@ -144,29 +203,63 @@ class DashboardViewModel(
         haRepository.connectionState,
     ) { structure, entities, connectionState ->
         val view = structure.view
+        val tiles = view?.tiles.orEmpty().map { tile ->
+            when (val content = tile.content) {
+                is TileContent.Entity -> content.toUiState(tile.id, tile.colSpan, tile.rowSpan, entities)
+                is TileContent.Spacer -> SpacerTileUiState(tile.id, tile.colSpan, tile.rowSpan)
+                is TileContent.ViewLink -> ViewLinkTileUiState(
+                    id = tile.id,
+                    targetViewId = content.targetViewId,
+                    label = content.label ?: structure.viewNames[content.targetViewId],
+                    colSpan = tile.colSpan,
+                    rowSpan = tile.rowSpan,
+                )
+            }
+        }
         DashboardUiState(
             viewId = view?.id,
             grid = view?.grid ?: DashboardGrid(),
-            tiles = view?.tiles.orEmpty().map { tile ->
-                when (val content = tile.content) {
-                    is TileContent.Entity -> content.toUiState(tile.id, tile.colSpan, tile.rowSpan, entities)
-                    is TileContent.Spacer -> SpacerTileUiState(tile.id, tile.colSpan, tile.rowSpan)
-                    is TileContent.ViewLink -> ViewLinkTileUiState(
-                        id = tile.id,
-                        targetViewId = content.targetViewId,
-                        label = content.label ?: structure.viewNames[content.targetViewId],
-                        colSpan = tile.colSpan,
-                        rowSpan = tile.rowSpan,
-                    )
-                }
-            },
+            tiles = if (structure.showAddTile) tiles + AddTileUiState() else tiles,
             packing = structure.packing,
             connectionState = connectionState,
             hasEntities = entities.isNotEmpty(),
+            isEditing = structure.isEditing,
+            isDirty = structure.isDirty,
+            linkTargets = structure.linkTargets,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
+    /** Snapshots the first view of the current layout into a working copy and enters edit mode. */
+    fun enterEditMode() {
+        val layout = layoutState.value
+        val viewId = layout.views.firstOrNull()?.id ?: return
+        editController.enter(layout, viewId)
+    }
+
+    /** Discards the working copy without writing anything. */
+    fun cancelEditMode() = editController.cancel()
+
+    /** Persists the working copy in one store update and exits edit mode. */
+    fun doneEditMode() {
+        viewModelScope.launch { editController.done() }
+    }
+
+    fun addEntityTile(entityId: String) = editController.addEntityTile(entityId)
+
+    fun addSpacerTile() = editController.addSpacerTile()
+
+    fun addLinkTile(targetViewId: String) = editController.addLinkTile(targetViewId)
+
+    fun setEditTileLabel(tileId: String, label: String?) = editController.setLabel(tileId, label)
+
+    fun resizeEditTile(tileId: String, colSpan: Int, rowSpan: Int) = editController.resizeTile(tileId, colSpan, rowSpan)
+
+    fun removeEditTile(tileId: String) = editController.removeTile(tileId)
+
+    fun setEditGrid(grid: DashboardGrid) = editController.setGrid(grid)
+
     fun onTileClick(tile: DashboardTileUiState) {
+        if (uiState.value.isEditing) return
         if (tile.domain == CAMERA_DOMAIN) {
             if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label))
             return
@@ -182,11 +275,30 @@ class DashboardViewModel(
         }
     }
 
-    private fun DashboardLayout.toStructure(): ViewStructure {
-        val view = views.firstOrNull()
-        val packing = view?.let { packer.pack(it.grid.columns, it.tiles, { t -> t.colSpan }, { t -> t.rowSpan }) }
-            ?: GridPacking.Empty
-        return ViewStructure(view = view, viewNames = views.associate { it.id to it.name }, packing = packing)
+    private fun buildStructure(stored: DashboardLayout, edit: DashboardEditState): ViewStructure {
+        val layout = edit.working ?: stored
+        val viewId = if (edit.isEditing) edit.editingViewId else layout.views.firstOrNull()?.id
+        val view = layout.views.firstOrNull { it.id == viewId }
+        val realCount = view?.tiles?.size ?: 0
+        val showAddTile = edit.isEditing
+        val totalCount = realCount + if (showAddTile) 1 else 0
+        val packing = view?.let {
+            packer.pack(
+                it.grid.columns,
+                totalCount,
+                colSpanOf = { i -> if (i < realCount) it.tiles[i].colSpan else 1 },
+                rowSpanOf = { i -> if (i < realCount) it.tiles[i].rowSpan else 1 },
+            )
+        } ?: GridPacking.Empty
+        return ViewStructure(
+            view = view,
+            viewNames = layout.views.associate { it.id to it.name },
+            packing = packing,
+            isEditing = edit.isEditing,
+            isDirty = edit.isDirty,
+            linkTargets = edit.linkTargets,
+            showAddTile = showAddTile,
+        )
     }
 
     private fun TileContent.Entity.toUiState(
