@@ -22,8 +22,8 @@ Cada etapa deja la app funcionando y se puede probar en la tablet antes de pasar
 
 ## Etapas
 
-### Etapa 1 — Modelo de datos y migración
-Sin cambios visibles. Base de todo lo demás.
+### Etapa 1 — Modelo de datos y migración ✅
+Sin cambios visibles. Base de todo lo demás. Migración verificada con los botones reales del usuario.
 - `DashboardLayout` → lista de `DashboardView` (id, nombre, configuración de grilla, botones).
 - `DashboardTile` con `id` propio, tamaño (`colSpan`/`rowSpan`) y tipo: entidad (con etiqueta
   opcional), link a vista, espaciador.
