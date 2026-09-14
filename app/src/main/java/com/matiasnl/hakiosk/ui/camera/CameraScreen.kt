@@ -1,20 +1,25 @@
 package com.matiasnl.hakiosk.ui.camera
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,12 +38,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.matiasnl.hakiosk.R
@@ -68,6 +77,7 @@ fun CameraScreen(
         onStopOrDispose { viewModel.onStop() }
     }
     KeepScreenOn()
+    ImmersiveSystemBars()
 
     var size by remember { mutableStateOf(IntSize.Zero) }
     val cachedThumbnail = remember(entityId) { CameraSnapshot(snapshots.cachedImage(entityId)) }
@@ -105,6 +115,28 @@ private fun KeepScreenOn() {
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
     }
+}
+
+/**
+ * Hides the status and navigation bars while the camera is visible, so the video uses the whole
+ * screen. An edge swipe reveals them temporarily; they come back when the screen stops or closes.
+ */
+@Composable
+private fun ImmersiveSystemBars() {
+    val view = LocalView.current
+    LifecycleStartEffect(view) {
+        val window = view.context.findActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        onStopOrDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 /** Aspect-fit video: wrapContentSize gives the renderer AT_MOST constraints so it sizes itself to the frame. */
@@ -157,29 +189,37 @@ private fun CameraContent(
             }
         }
 
-        Row(
+        // Floating controls instead of a bar, so the picture keeps the whole screen.
+        val closeLabel = stringResource(R.string.camera_close)
+        IconButton(
+            onClick = onClose,
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = Color.Black.copy(alpha = 0.35f),
+                contentColor = Color.White,
+            ),
             modifier = Modifier
-                .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.45f))
+                .align(Alignment.TopStart)
                 .safeDrawingPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(12.dp)
+                .size(40.dp)
+                .semantics { contentDescription = closeLabel },
         ) {
-            FilledTonalButton(onClick = onClose) { Text(stringResource(R.string.camera_close)) }
-            Text(
-                text = uiState.title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            val playing = uiState.mode as? CameraScreenMode.Playing
-            if (playing != null && playing.hasAudio) {
-                FilledTonalButton(onClick = { onMutedChange(!playing.muted) }) {
-                    Text(stringResource(if (playing.muted) R.string.camera_unmute else R.string.camera_mute))
-                }
+            Text("✕", style = MaterialTheme.typography.titleMedium)
+        }
+        val playing = uiState.mode as? CameraScreenMode.Playing
+        if (playing != null && playing.hasAudio) {
+            FilledTonalButton(
+                onClick = { onMutedChange(!playing.muted) },
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = Color.Black.copy(alpha = 0.35f),
+                    contentColor = Color.White,
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .safeDrawingPadding()
+                    .padding(12.dp),
+            ) {
+                Text(stringResource(if (playing.muted) R.string.camera_unmute else R.string.camera_mute))
             }
         }
     }
