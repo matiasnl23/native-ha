@@ -95,6 +95,15 @@ fun DashboardScreen(
         }
     }
 
+    // Defensive: if edit mode ends (Listo/Cancelar) any modal state left open closes with it.
+    LaunchedEffect(uiState.isEditing) {
+        if (!uiState.isEditing) {
+            editingTileId = null
+            showAddTile = false
+            showGridSettings = false
+        }
+    }
+
     // Back while editing = Cancelar, with a confirmation dialog if the working copy is dirty.
     val requestCancelEdit: () -> Unit = {
         if (uiState.isDirty) showDiscardConfirm = true else viewModel.cancelEditMode()
