@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
-import com.matiasnl.hakiosk.data.ha.fake.FakeHaCameraSource
+import com.matiasnl.hakiosk.data.ha.camera.WebSocketHaCameraSource
 import com.matiasnl.hakiosk.data.ha.store.DataStoreHaConfigStore
 import com.matiasnl.hakiosk.data.ha.store.KeystoreTokenCipher
 import okhttp3.OkHttpClient
@@ -33,8 +33,11 @@ class HaModule(context: Context) {
 
     val configStore: HaConfigStore by lazy { DataStoreHaConfigStore(dataStore, KeystoreTokenCipher()) }
 
-    val repository: HaRepository by lazy { WebSocketHaRepository(configStore, okHttpClient) }
+    // Concrete type stays private: the camera source shares its live connection without widening HaRepository.
+    private val webSocketRepository by lazy { WebSocketHaRepository(configStore, okHttpClient) }
 
-    // Fake until the WebSocket/REST camera implementation lands.
-    val cameraSource: HaCameraSource by lazy { FakeHaCameraSource() }
+    val repository: HaRepository get() = webSocketRepository
+
+    /** Signaling rides the repository's connection (no extra socket); snapshots use REST with the stored config. */
+    val cameraSource: HaCameraSource by lazy { WebSocketHaCameraSource(webSocketRepository, configStore, okHttpClient) }
 }
