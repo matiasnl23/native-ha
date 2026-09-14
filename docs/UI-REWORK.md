@@ -53,7 +53,9 @@ editor viejo quedó como "Ordenar lista" hasta la etapa 4.
 - Listo / Cancelar.
 - Agente: `android-ui` (Sonnet).
 
-### Etapa 4 — Reordenar con drag & drop
+### Etapa 4 — Reordenar con drag & drop ✅
+Con histéresis (bloqueo por celda + tile ancla) para que tiles de distinto tamaño no oscilen. El
+editor viejo ("Ordenar lista") se eliminó.
 - En modo edición: mantener presionado y arrastrar, con empaquetado en vivo, feedback háptico y
   autoscroll en los bordes.
 - Se elimina la pantalla/ruta del editor viejo (queda disponible hasta acá para no perder la forma
