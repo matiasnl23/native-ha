@@ -18,6 +18,7 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -33,6 +34,22 @@ class FakeHaWebSocketServer : WebSocketListener() {
     @Volatile var respondToPing = true
     @Volatile var serviceError: String? = null
     @Volatile var states: List<JsonObject> = listOf(state("light.kitchen", "off"), state("sensor.temp", "21"))
+
+    /** Registry command type -> `result` payload. Missing commands answer `unknown_command`. */
+    @Volatile var registry: Map<String, JsonElement> = mapOf(
+        "config/floor_registry/list" to JsonArray(emptyList()),
+        "config/area_registry/list" to JsonArray(emptyList()),
+        "config/device_registry/list" to JsonArray(emptyList()),
+        "config/entity_registry/list_for_display" to Json.parseToJsonElement("""{"entities":[]}"""),
+    )
+
+    /** Registry commands that answer with an error result. */
+    @Volatile var failingCommands: Set<String> = emptySet()
+
+    /** How many times each registry command was received. */
+    val commandCounts = ConcurrentHashMap<String, AtomicInteger>()
+
+    fun commandCount(type: String): Int = commandCounts[type]?.get() ?: 0
 
     @Volatile
     private var current: WebSocket? = null
@@ -77,6 +94,16 @@ class FakeHaWebSocketServer : WebSocketListener() {
             "subscribe_events" -> webSocket.send(result(id!!, JsonNull))
             "get_states" -> webSocket.send(result(id!!, JsonArray(states)))
             "ping" -> if (respondToPing) webSocket.send("""{"id":$id,"type":"pong"}""")
+            in REGISTRY_COMMANDS -> {
+                val type = (message["type"] as JsonPrimitive).content
+                commandCounts.computeIfAbsent(type) { AtomicInteger() }.incrementAndGet()
+                val response = registry[type]
+                if (type in failingCommands || response == null) {
+                    webSocket.send("""{"id":$id,"type":"result","success":false,"error":{"code":"unknown_command","message":"Unknown command."}}""")
+                } else {
+                    webSocket.send(result(id!!, response))
+                }
+            }
             "call_service" -> {
                 val error = serviceError
                 if (error == null) {
@@ -105,6 +132,19 @@ class FakeHaWebSocketServer : WebSocketListener() {
         current!!.send(event.toString())
     }
 
+    /** Sends a bare event of [eventType] (e.g. `area_registry_updated`) on the current connection. */
+    fun sendEvent(eventType: String, subscriptionId: Int = 2) {
+        val event = buildJsonObject {
+            put("id", subscriptionId)
+            put("type", "event")
+            put("event", buildJsonObject {
+                put("event_type", eventType)
+                put("data", buildJsonObject { put("action", "update") })
+            })
+        }
+        current!!.send(event.toString())
+    }
+
     /** Server-side close, e.g. HA restarting. */
     fun dropConnection() {
         current!!.close(1001, "restarting")
@@ -127,6 +167,14 @@ class FakeHaWebSocketServer : WebSocketListener() {
     }.toString()
 
     companion object {
+        val REGISTRY_COMMANDS = setOf(
+            "config/floor_registry/list",
+            "config/area_registry/list",
+            "config/device_registry/list",
+            "config/entity_registry/list_for_display",
+            "config/entity_registry/list",
+        )
+
         fun state(entityId: String, state: String) = buildJsonObject {
             put("entity_id", entityId)
             put("state", state)

@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
@@ -172,6 +173,170 @@ class WebSocketHaRepositoryTest {
         assertEquals("Heartbeat timed out", (disconnected as HaConnectionState.Disconnected).message)
         awaitValue(repo.connectionState) { it == HaConnectionState.Connected }
         assertTrue(ha.connections.get() >= 2)
+    }
+
+    private fun seedRegistry() {
+        ha.registry = mapOf(
+            FLOORS to Json.parseToJsonElement(
+                """[
+                {"floor_id":"up","name":"Upstairs","level":1,"aliases":[],"icon":null},
+                {"floor_id":"attic","name":"Attic","level":null},
+                {"floor_id":"ground","name":"Ground","level":0},
+                {"floor_id":"annex","name":"Annex","level":0}
+                ]""",
+            ),
+            AREAS to Json.parseToJsonElement(
+                """[
+                {"area_id":"kitchen","name":"Kitchen","floor_id":"ground","picture":null},
+                {"area_id":"living","name":"Living room","floor_id":"ground"},
+                {"area_id":"garage","name":"Garage","floor_id":null}
+                ]""",
+            ),
+            DEVICES to Json.parseToJsonElement(
+                """[
+                {"id":"d1","area_id":"kitchen","name":"Hub","identifiers":[["hue","1"]]},
+                {"id":"d2","area_id":null},
+                {"id":"d3","area_id":"garage"}
+                ]""",
+            ),
+            ENTITIES_DISPLAY to Json.parseToJsonElement(
+                """{"entity_categories":{"0":"config"},"entities":[
+                {"ei":"light.kitchen","pl":"hue","di":"d1"},
+                {"ei":"sensor.temp","ai":"living","di":"d1"},
+                {"ei":"switch.no_area","di":"d2"},
+                {"ei":"switch.orphan"},
+                {"ei":"cover.garage","di":"d3","hb":true}
+                ]}""",
+            ),
+        )
+    }
+
+    @Test
+    fun initialRegistryFetchBuildsSortedRegistry() = runTest {
+        seedRegistry()
+        val repo = repository().also { repo = it }
+        repo.start()
+
+        val registry = awaitValue(repo.registry) { it.areas.isNotEmpty() }
+        assertEquals(listOf("annex", "ground", "up", "attic"), registry.floors.map { it.floorId })
+        assertEquals(HaFloor("attic", "Attic", null), registry.floors.last())
+        assertEquals(
+            listOf(HaArea("garage", "Garage", null), HaArea("kitchen", "Kitchen", "ground"), HaArea("living", "Living room", "ground")),
+            registry.areas,
+        )
+        assertEquals(
+            mapOf("light.kitchen" to "kitchen", "sensor.temp" to "living", "cover.garage" to "garage"),
+            registry.entityAreas,
+        )
+        assertEquals(HaConnectionState.Connected, repo.connectionState.value)
+        val subscribed = generateSequence { ha.received.poll() }
+            .filter { it["type"]!!.jsonPrimitive.content == "subscribe_events" }
+            .map { it["event_type"]!!.jsonPrimitive.content }
+            .toSet()
+        assertEquals(
+            setOf("state_changed", "floor_registry_updated", "area_registry_updated", "device_registry_updated", "entity_registry_updated"),
+            subscribed,
+        )
+    }
+
+    @Test
+    fun registryUpdateEventsTriggerOneDebouncedRefetch() = runTest {
+        seedRegistry()
+        val repo = repository(settings = HaClientSettings(heartbeatIntervalMillis = 0, registryRefreshDebounceMillis = 300))
+            .also { repo = it }
+        repo.start()
+        awaitValue(repo.registry) { it.areas.size == 3 }
+        assertEquals(1, ha.commandCount(AREAS))
+
+        ha.registry = ha.registry + (AREAS to Json.parseToJsonElement("""[{"area_id":"hall","name":"Hall"}]"""))
+        ha.sendEvent("area_registry_updated")
+        ha.sendEvent("entity_registry_updated")
+        ha.sendEvent("area_registry_updated")
+
+        val registry = awaitValue(repo.registry) { it.areas.size == 1 }
+        assertEquals(listOf(HaArea("hall", "Hall", null)), registry.areas)
+        assertEquals(2, ha.commandCount(AREAS))
+        assertEquals(2, ha.commandCount(DEVICES))
+        assertEquals(HaConnectionState.Connected, repo.connectionState.value)
+    }
+
+    @Test
+    fun floorRegistryFailureKeepsAreasAndConnection() = runTest {
+        seedRegistry()
+        ha.failingCommands = setOf(FLOORS)
+        val repo = repository().also { repo = it }
+        repo.start()
+
+        val registry = awaitValue(repo.registry) { it.areas.isNotEmpty() }
+        assertTrue(registry.floors.isEmpty())
+        assertEquals(3, registry.entityAreas.size)
+        withContext(Dispatchers.IO) { Thread.sleep(200) }
+        assertEquals(HaConnectionState.Connected, repo.connectionState.value)
+        assertEquals(1, ha.connections.get())
+
+        // Service calls still work on the same connection.
+        assertTrue(repo.callService("light", "toggle", "light.kitchen").isSuccess)
+    }
+
+    @Test
+    fun entityRegistryFallsBackToFullListWhenDisplayListFails() = runTest {
+        seedRegistry()
+        ha.failingCommands = setOf(ENTITIES_DISPLAY)
+        ha.registry = ha.registry + (
+            ENTITIES to Json.parseToJsonElement(
+                """[
+                {"entity_id":"light.kitchen","area_id":null,"device_id":"d1","disabled_by":null},
+                {"entity_id":"light.disabled","area_id":"garage","device_id":null,"disabled_by":"user"}
+                ]""",
+            )
+            )
+        val repo = repository().also { repo = it }
+        repo.start()
+
+        val registry = awaitValue(repo.registry) { it.entityAreas.isNotEmpty() }
+        assertEquals(mapOf("light.kitchen" to "kitchen"), registry.entityAreas)
+        assertEquals(1, ha.connections.get())
+    }
+
+    @Test
+    fun registryKeptAfterStopAndClearedOnServerChangeOrConfigClear() = runTest {
+        seedRegistry()
+        val repo = repository().also { repo = it }
+        repo.start()
+        val synced = awaitValue(repo.registry) { it.areas.isNotEmpty() }
+
+        repo.stop()
+        assertEquals(synced, repo.registry.value)
+
+        repo.start()
+        awaitValue(repo.connectionState) { it == HaConnectionState.Connected }
+        assertEquals(synced, repo.registry.value)
+
+        // A different server that serves no registry at all: only a reset can empty it.
+        val other = FakeHaWebSocketServer()
+        try {
+            other.failingCommands = FakeHaWebSocketServer.REGISTRY_COMMANDS
+            configStore.save(HaServerConfig(other.baseUrl, "good-token"))
+            awaitValue(repo.registry) { it == HaRegistry() }
+            awaitValue(repo.connectionState) { it == HaConnectionState.Connected }
+            assertEquals(HaRegistry(), repo.registry.value)
+
+            configStore.save(HaServerConfig(ha.baseUrl, "good-token"))
+            awaitValue(repo.registry) { it.areas.isNotEmpty() }
+            configStore.clear()
+            awaitValue(repo.registry) { it == HaRegistry() }
+        } finally {
+            repo.stop()
+            other.shutdown()
+        }
+    }
+
+    private companion object {
+        const val FLOORS = "config/floor_registry/list"
+        const val AREAS = "config/area_registry/list"
+        const val DEVICES = "config/device_registry/list"
+        const val ENTITIES_DISPLAY = "config/entity_registry/list_for_display"
+        const val ENTITIES = "config/entity_registry/list"
     }
 
     @Test

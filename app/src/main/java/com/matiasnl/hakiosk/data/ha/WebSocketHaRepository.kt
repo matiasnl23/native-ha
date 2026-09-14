@@ -7,6 +7,8 @@ import com.matiasnl.hakiosk.data.ha.ws.HaAuthInvalidException
 import com.matiasnl.hakiosk.data.ha.ws.HaClientSettings
 import com.matiasnl.hakiosk.data.ha.ws.HaConnectionCallbacks
 import com.matiasnl.hakiosk.data.ha.ws.HaProtocol
+import com.matiasnl.hakiosk.data.ha.ws.HaRegistryParser
+import com.matiasnl.hakiosk.data.ha.ws.HaRequestException
 import com.matiasnl.hakiosk.data.ha.ws.HaWebSocketConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -15,7 +17,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.JsonElement
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +40,12 @@ import okhttp3.OkHttpClient
  * - Dropped connections are retried with [backoff]; the attempt counter resets after a successful
  *   auth. `auth_invalid` stops retrying until the config changes (or stop/start).
  * - Only the latest state per entity is kept; a full `get_states` re-sync happens on every connection.
+ * - The floor/area registry is fetched after every states snapshot and refetched (debounced) on
+ *   `*_registry_updated` events, in a side coroutine: it never delays `state_changed` handling or
+ *   the Connected state, and its failures never drop the connection (each part keeps its last good
+ *   value). Only the reduced [HaRegistry] is retained.
+ * - Entities and registry survive [stop]; they are cleared when the config is cleared or points to
+ *   a different server.
  */
 class WebSocketHaRepository(
     private val configStore: HaConfigStore,
@@ -53,7 +65,6 @@ class WebSocketHaRepository(
     private val _entities = MutableStateFlow<Map<String, HaEntity>>(emptyMap())
     override val entities: StateFlow<Map<String, HaEntity>> = _entities.asStateFlow()
 
-    // Registry sync not implemented yet: stays empty.
     private val _registry = MutableStateFlow(HaRegistry())
     override val registry: StateFlow<HaRegistry> = _registry.asStateFlow()
 
@@ -75,11 +86,11 @@ class WebSocketHaRepository(
             job = scope.launch {
                 configStore.config.distinctUntilChanged().collectLatest { config ->
                     if (config == null) {
-                        resetEntities(gen, server = null)
+                        resetServerData(gen, server = null)
                         setState(gen, HaConnectionState.Idle)
                     } else {
                         val server = HaUrls.normalizeBaseUrl(config.baseUrl)
-                        if (server != entitiesServer) resetEntities(gen, server)
+                        if (server != entitiesServer) resetServerData(gen, server)
                         runConnectionLoop(gen, config)
                     }
                 }
@@ -129,31 +140,41 @@ class WebSocketHaRepository(
             setState(gen, HaConnectionState.Connecting)
             val connection = HaWebSocketConnection(okHttpClient, config, settings)
             val failure: String = try {
-                connection.run(object : HaConnectionCallbacks {
-                    override fun onAuthenticated(haVersion: String?) {
-                        attempt = 0
-                    }
-
-                    override fun onStatesSnapshot(entities: List<HaEntity>) {
-                        workingEntities.clear()
-                        entities.associateByTo(workingEntities) { it.entityId }
-                        entitiesDirty = true
-                        publishEntities(gen)
-                        activeConnection = connection
-                        setState(gen, HaConnectionState.Connected)
-                    }
-
-                    override fun onStateChanged(entityId: String, newState: HaEntity?) {
-                        if (newState == null) {
-                            workingEntities.remove(entityId)
-                        } else {
-                            workingEntities[entityId] = newState
+                coroutineScope {
+                    // Conflated: any number of pending triggers collapse into one refetch.
+                    val registryTriggers = Channel<Unit>(Channel.CONFLATED)
+                    launch { syncRegistry(gen, connection, registryTriggers) }
+                    connection.run(object : HaConnectionCallbacks {
+                        override fun onAuthenticated(haVersion: String?) {
+                            attempt = 0
                         }
-                        entitiesDirty = true
-                    }
 
-                    override fun onMessagesProcessed() = publishEntities(gen)
-                })
+                        override fun onStatesSnapshot(entities: List<HaEntity>) {
+                            workingEntities.clear()
+                            entities.associateByTo(workingEntities) { it.entityId }
+                            entitiesDirty = true
+                            publishEntities(gen)
+                            activeConnection = connection
+                            setState(gen, HaConnectionState.Connected)
+                            registryTriggers.trySend(Unit)
+                        }
+
+                        override fun onStateChanged(entityId: String, newState: HaEntity?) {
+                            if (newState == null) {
+                                workingEntities.remove(entityId)
+                            } else {
+                                workingEntities[entityId] = newState
+                            }
+                            entitiesDirty = true
+                        }
+
+                        override fun onRegistryUpdated() {
+                            registryTriggers.trySend(Unit)
+                        }
+
+                        override fun onMessagesProcessed() = publishEntities(gen)
+                    })
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HaAuthInvalidException) {
@@ -171,11 +192,77 @@ class WebSocketHaRepository(
         }
     }
 
-    private fun resetEntities(gen: Long, server: String?) {
+    /**
+     * Runs alongside one connection and is cancelled with it. Must not throw: a failure here would
+     * tear down the connection.
+     */
+    private suspend fun syncRegistry(gen: Long, connection: HaWebSocketConnection, triggers: ReceiveChannel<Unit>) {
+        triggers.receive() // initial sync once the states snapshot is in
+        // Subscribe before fetching so changes made during the fetch trigger a refetch.
+        for (eventType in HaProtocol.REGISTRY_EVENTS) {
+            try {
+                connection.request { id -> HaProtocol.subscribeEvents(id, eventType) }
+            } catch (_: HaRequestException) {
+                // No live updates for this registry; it is still refetched on reconnect.
+            }
+        }
+        while (true) {
+            fetchRegistry(gen, connection)
+            triggers.receive()
+            delay(settings.registryRefreshDebounceMillis)
+            triggers.tryReceive() // drop triggers coalesced during the quiet period
+        }
+    }
+
+    /**
+     * Fetches the four registry lists one at a time, reducing each payload before requesting the next
+     * so at most one raw result is alive. A failed or malformed part keeps its last good value.
+     */
+    private suspend fun fetchRegistry(gen: Long, connection: HaWebSocketConnection) {
+        val floors = fetchPart(connection, HaProtocol.CMD_FLOOR_REGISTRY_LIST, HaRegistryParser::parseFloors)
+        val areas = fetchPart(connection, HaProtocol.CMD_AREA_REGISTRY_LIST, HaRegistryParser::parseAreas)
+        val deviceAreas = fetchPart(connection, HaProtocol.CMD_DEVICE_REGISTRY_LIST, HaRegistryParser::parseDeviceAreas)
+        val entityAreas = deviceAreas?.let { devices ->
+            fetchPart(connection, HaProtocol.CMD_ENTITY_REGISTRY_LIST_FOR_DISPLAY) {
+                HaRegistryParser.parseEntityAreas(it, devices)
+            } ?: fetchPart(connection, HaProtocol.CMD_ENTITY_REGISTRY_LIST) {
+                HaRegistryParser.parseEntityAreas(it, devices)
+            }
+        }
+        if (floors == null && areas == null && entityAreas == null) return
+        synchronized(lock) {
+            if (gen != generation) return
+            val previous = _registry.value
+            _registry.value = HaRegistry(
+                floors = floors ?: previous.floors,
+                areas = areas ?: previous.areas,
+                entityAreas = entityAreas ?: previous.entityAreas,
+            )
+        }
+    }
+
+    /** Null when the request failed or the payload was malformed. Parsing runs off the confined thread. */
+    private suspend fun <T : Any> fetchPart(
+        connection: HaWebSocketConnection,
+        command: String,
+        parse: (JsonElement) -> T?,
+    ): T? {
+        val result = try {
+            connection.request { id -> HaProtocol.command(id, command) }
+        } catch (_: HaRequestException) {
+            return null
+        }
+        return withContext(dispatcher) { parse(result) }
+    }
+
+    private fun resetServerData(gen: Long, server: String?) {
         workingEntities.clear()
         entitiesDirty = true
         entitiesServer = server
         publishEntities(gen)
+        synchronized(lock) {
+            if (gen == generation) _registry.value = HaRegistry()
+        }
     }
 
     private fun publishEntities(gen: Long) {

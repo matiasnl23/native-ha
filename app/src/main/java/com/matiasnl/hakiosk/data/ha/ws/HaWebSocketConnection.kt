@@ -34,6 +34,8 @@ data class HaClientSettings(
     val requestTimeoutMillis: Long = 15_000,
     val heartbeatIntervalMillis: Long = 60_000,
     val heartbeatTimeoutMillis: Long = 10_000,
+    /** Quiet period after a registry change event before refetching; bursts coalesce into one refetch. */
+    val registryRefreshDebounceMillis: Long = 1_500,
 )
 
 /** The connection dropped or never completed; the caller should retry with backoff. */
@@ -53,6 +55,9 @@ internal interface HaConnectionCallbacks {
 
     /** [newState] is null when the entity was removed. */
     fun onStateChanged(entityId: String, newState: HaEntity?)
+
+    /** A floor/area/device/entity registry `*_registry_updated` event arrived. */
+    fun onRegistryUpdated()
 
     /** Called after a batch of incoming messages was processed; a good moment to publish. */
     fun onMessagesProcessed()
@@ -254,7 +259,12 @@ internal class HaWebSocketConnection(
 
             HaProtocol.TYPE_EVENT -> {
                 val event = message["event"] as? JsonObject ?: return
-                if (event["event_type"].stringOrNull() != HaProtocol.EVENT_STATE_CHANGED) return
+                val eventType = event["event_type"].stringOrNull()
+                if (eventType in HaProtocol.REGISTRY_EVENTS) {
+                    callbacks.onRegistryUpdated()
+                    return
+                }
+                if (eventType != HaProtocol.EVENT_STATE_CHANGED) return
                 val data = event["data"] as? JsonObject ?: return
                 val entityId = data["entity_id"].stringOrNull() ?: return
                 val newState = data["new_state"]
