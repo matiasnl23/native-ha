@@ -7,6 +7,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.FakeDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -186,6 +187,40 @@ class DashboardEditControllerTest {
 
         assertNull(controller.state.value.working)
         assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `setTapAction changes an entity tile in the working copy only, and cancel discards it`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.setTapAction("a", TileTapAction.OPEN_DETAILS)
+        controller.setTapAction("b", TileTapAction.OPEN_DETAILS) // A spacer has no tap action.
+
+        val working = controller.state.value.working!!
+        assertEquals(TileContent.Entity("light.a", tapAction = TileTapAction.OPEN_DETAILS), working.views[0].tiles[0].content)
+        assertEquals(TileContent.Spacer, working.views[0].tiles[1].content)
+        assertTrue(controller.state.value.isDirty)
+        assertEquals(layout, store.layout.value)
+
+        controller.cancel()
+
+        assertNull(controller.state.value.working)
+        assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `label edits keep the tile's tap action`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+        controller.setTapAction("a", TileTapAction.OPEN_DETAILS)
+
+        controller.setLabel("a", "Lámpara")
+
+        assertEquals(
+            TileContent.Entity("light.a", "Lámpara", TileTapAction.OPEN_DETAILS),
+            controller.state.value.working!!.views[0].tiles[0].content,
+        )
     }
 
     @Test

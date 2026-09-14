@@ -601,6 +601,30 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `a tap action change goes to the working copy, Cancelar discards it and Listo persists it`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        fun storedTapAction() = (layoutStore.layout.value.views.single().tiles.single().content as TileContent.Entity).tapAction
+
+        viewModel.enterEditMode()
+        val tileId = viewModel.uiState.value.entityTiles().single().id
+        viewModel.setEditTileTapAction(tileId, TileTapAction.OPEN_DETAILS)
+
+        assertEquals(TileTapAction.OPEN_DETAILS, viewModel.uiState.value.entityTiles().single().tapAction)
+        assertTrue(viewModel.uiState.value.isDirty)
+        assertEquals(TileTapAction.DEFAULT, storedTapAction())
+
+        viewModel.cancelEditMode()
+        assertEquals(TileTapAction.DEFAULT, viewModel.uiState.value.entityTiles().single().tapAction)
+        assertEquals(TileTapAction.DEFAULT, storedTapAction())
+
+        viewModel.enterEditMode()
+        viewModel.setEditTileTapAction(tileId, TileTapAction.OPEN_DETAILS)
+        viewModel.doneEditMode()
+        assertEquals(TileTapAction.OPEN_DETAILS, storedTapAction())
+    }
+
+    @Test
     fun `resize clamps width to the view's columns`() = runTest {
         val layout = DashboardLayout(
             views = listOf(

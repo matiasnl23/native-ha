@@ -79,6 +79,14 @@ class DomainTileBehaviorsTest {
     }
 
     @Test
+    fun `only domains with a tap choice contribute an edit-modal section`() {
+        assertEquals(1, DomainTileBehaviors.forDomain("light").editSections(TileTapAction.DEFAULT) {}.size)
+        listOf("alarm_control_panel", "switch", "scene", "camera", "sensor").forEach { domain ->
+            assertTrue(domain, DomainTileBehaviors.forDomain(domain).editSections(TileTapAction.DEFAULT) {}.isEmpty())
+        }
+    }
+
+    @Test
     fun `other domains keep the default summary`() {
         assertEquals(TileSummary.Default, DomainTileBehaviors.forDomain("switch").summarize(testEntity("switch.a", "on")))
         assertEquals(TileSummary.Default, DomainTileBehaviors.forDomain("sensor").summarize(testEntity("sensor.a", "21")))

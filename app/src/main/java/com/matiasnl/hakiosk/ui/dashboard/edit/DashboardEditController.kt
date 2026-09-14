@@ -7,6 +7,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.addTile
 import com.matiasnl.hakiosk.data.dashboard.addView
@@ -170,6 +171,16 @@ class DashboardEditController(
                 is TileContent.Entity -> tile.copy(content = content.copy(label = trimmed))
                 is TileContent.ViewLink -> tile.copy(content = content.copy(label = trimmed))
                 TileContent.Spacer -> tile
+            }
+        }
+    }
+
+    /** Sets an entity tile's tap preference in the working copy; other tile types are left untouched. */
+    fun setTapAction(tileId: String, tapAction: TileTapAction) = mutate { layout, viewId ->
+        layout.updateTile(viewId, tileId) { tile ->
+            when (val content = tile.content) {
+                is TileContent.Entity -> tile.copy(content = content.copy(tapAction = tapAction))
+                is TileContent.ViewLink, TileContent.Spacer -> tile
             }
         }
     }

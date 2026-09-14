@@ -465,6 +465,9 @@ class DashboardViewModel(
 
     fun resizeEditTile(tileId: String, colSpan: Int, rowSpan: Int) = editController.resizeTile(tileId, colSpan, rowSpan)
 
+    /** Working copy only, like every edit-modal field: persisted by Listo, discarded by Cancelar. */
+    fun setEditTileTapAction(tileId: String, tapAction: TileTapAction) = editController.setTapAction(tileId, tapAction)
+
     fun removeEditTile(tileId: String) = editController.removeTile(tileId)
 
     fun setEditGrid(grid: DashboardGrid) = editController.setGrid(grid)

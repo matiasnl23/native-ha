@@ -76,6 +76,9 @@ import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsHost
+import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryVisual
@@ -211,9 +214,10 @@ fun DashboardScreen(
         EditTileModalHost(
             uiState = uiState,
             tileId = tileId,
-            onApply = { label, colSpan, rowSpan ->
+            onApply = { label, colSpan, rowSpan, tapAction ->
                 viewModel.setEditTileLabel(tileId, label)
                 viewModel.resizeEditTile(tileId, colSpan, rowSpan)
+                tapAction?.let { viewModel.setEditTileTapAction(tileId, it) }
                 editingTileId = null
             },
             onRemove = {
@@ -263,13 +267,20 @@ private fun DashboardUiState.editablePreviewTiles(): List<PreviewTile> =
 private fun EditTileModalHost(
     uiState: DashboardUiState,
     tileId: String,
-    onApply: (label: String?, colSpan: Int, rowSpan: Int) -> Unit,
+    /** [tapAction] is null when the tile's domain offers no tap choice (nothing to write). */
+    onApply: (label: String?, colSpan: Int, rowSpan: Int, tapAction: TileTapAction?) -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val editableTiles = uiState.tiles.filterNot { it is AddTileUiState }
     val index = editableTiles.indexOfFirst { it.id == tileId }
     val tile = editableTiles.getOrNull(index) ?: return
+    val entityTile = tile as? DashboardTileUiState
+    // Modal-local like the label and size: it only reaches the working copy through Aplicar.
+    var tapAction by rememberSaveable(tileId) { mutableStateOf(entityTile?.tapAction ?: TileTapAction.DEFAULT) }
+    val domainSections = entityTile
+        ?.let { DomainTileBehaviors.forDomain(it.domain).editSections(tapAction) { action -> tapAction = action } }
+        .orEmpty()
     val previewTiles = uiState.editablePreviewTiles()
     val viewLinkFallback = stringResource(R.string.dashboard_view_link_fallback)
     val (title, showLabelField, initialLabel, labelPlaceholder) = when (tile) {
@@ -290,9 +301,12 @@ private fun EditTileModalHost(
         grid = uiState.grid,
         tiles = previewTiles,
         editingIndex = index,
-        onApply = onApply,
+        onApply = { label, colSpan, rowSpan ->
+            onApply(label, colSpan, rowSpan, tapAction.takeIf { domainSections.isNotEmpty() })
+        },
         onRemove = onRemove,
         onDismiss = onDismiss,
+        domainSections = domainSections,
     )
 }
 

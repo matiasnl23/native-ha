@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
+import androidx.compose.runtime.Composable
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.AlarmTileBehavior
@@ -58,6 +59,13 @@ interface DomainTileBehavior {
      * caches it by entity instance), so parsing attributes here is fine.
      */
     fun summarize(entity: HaEntity): TileSummary = TileSummary.Default
+
+    /**
+     * The edit modal's sections for a tile of this domain (passed as `EditTileModal`'s `domainSections`).
+     * They edit modal-local state, so a change only reaches the working copy when the modal is applied.
+     */
+    fun editSections(tapAction: TileTapAction, onTapActionChange: (TileTapAction) -> Unit): List<@Composable () -> Unit> =
+        if (offersTapActionChoice) listOf { TapActionSection(tapAction, onTapActionChange) } else emptyList()
 }
 
 /** Read-only tiles (sensors, binary sensors, anything unknown): taps are no-ops. */

@@ -109,6 +109,11 @@
     <string name="edit_tile_cancel">Cancelar</string>
     <string name="edit_tile_apply">Aplicar</string>
     <string name="edit_tile_link_title">Link a %1$s</string>
+    <string name="edit_tile_tap_action">Al tocar</string>
+    <string name="edit_tile_tap_action_toggle">Alternar</string>
+    <string name="edit_tile_tap_action_open_details">Abrir controles</string>
+    <string name="edit_tile_tap_action_toggle_hint">Un toque enciende o apaga. Mantené presionado el botón para abrir los controles.</string>
+    <string name="edit_tile_tap_action_open_details_hint">Un toque abre los controles.</string>
 
     <!-- Add tile modal -->
     <string name="add_tile_title">Agregar botón</string>
