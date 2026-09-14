@@ -21,6 +21,8 @@ class MainActivity : ComponentActivity() {
                     dashboardLayoutStore = container.dashboardLayoutStore,
                     dashboardViewPreferencesStore = container.dashboardViewPreferencesStore,
                     cameraModule = container.camera,
+                    mqttConfigStore = container.mqttConfigStore,
+                    mqttRemoteControl = container.mqttRemoteControl,
                 )
             }
         }

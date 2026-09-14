@@ -13,3 +13,7 @@ object DashboardRoute
 /** Full-screen focus view of one camera. [label] is the dashboard tile's name override, if any. */
 @Serializable
 data class CameraRoute(val entityId: String, val label: String? = null)
+
+/** MQTT broker settings for remote control from Home Assistant. */
+@Serializable
+object RemoteControlRoute

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +42,7 @@ fun SetupScreen(
     onSaved: () -> Unit,
     onDisconnected: () -> Unit,
     onBack: () -> Unit,
+    onOpenRemoteControl: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -54,6 +56,7 @@ fun SetupScreen(
         onSave = { viewModel.save(onSaved) },
         onDisconnect = { viewModel.disconnect(onDisconnected) },
         onBack = onBack,
+        onOpenRemoteControl = onOpenRemoteControl,
     )
 }
 
@@ -69,6 +72,7 @@ private fun SetupContent(
     onSave: () -> Unit,
     onDisconnect: () -> Unit,
     onBack: () -> Unit,
+    onOpenRemoteControl: () -> Unit = {},
 ) {
     var showDisconnectConfirm by remember { mutableStateOf(false) }
 
@@ -155,6 +159,12 @@ private fun SetupContent(
                 ) {
                     Text(stringResource(R.string.setup_disconnect))
                 }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text(stringResource(R.string.setup_remote_control_section), style = MaterialTheme.typography.titleSmall)
+            OutlinedButton(onClick = onOpenRemoteControl, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.remote_broker_title))
             }
         }
     }

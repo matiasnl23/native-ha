@@ -14,6 +14,8 @@ import androidx.navigation.toRoute
 import com.matiasnl.hakiosk.camera.CameraModule
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
+import com.matiasnl.hakiosk.data.device.MqttConfigStore
+import com.matiasnl.hakiosk.data.device.MqttRemoteControl
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.ui.camera.CameraScreen
@@ -21,6 +23,8 @@ import com.matiasnl.hakiosk.ui.camera.CameraThumbnail
 import com.matiasnl.hakiosk.ui.camera.CameraViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
+import com.matiasnl.hakiosk.ui.remote.BrokerSettingsScreen
+import com.matiasnl.hakiosk.ui.remote.BrokerSettingsViewModel
 import com.matiasnl.hakiosk.ui.setup.SetupScreen
 import com.matiasnl.hakiosk.ui.setup.SetupViewModel
 import kotlinx.coroutines.flow.first
@@ -40,6 +44,8 @@ fun HaKioskNavGraph(
     dashboardLayoutStore: DashboardLayoutStore,
     dashboardViewPreferencesStore: DashboardViewPreferencesStore,
     cameraModule: CameraModule,
+    mqttConfigStore: MqttConfigStore,
+    mqttRemoteControl: MqttRemoteControl,
 ) {
     val startDestination by produceState(initialValue = StartDestination.Loading, haConfigStore) {
         value = if (haConfigStore.config.first() == null) StartDestination.Setup else StartDestination.Dashboard
@@ -75,6 +81,18 @@ fun HaKioskNavGraph(
                                 popUpTo(0) { inclusive = true }
                             }
                         },
+                        onBack = { navController.popBackStack() },
+                        onOpenRemoteControl = { navController.navigate(RemoteControlRoute) },
+                    )
+                }
+                composable<RemoteControlRoute> { backStackEntry ->
+                    val viewModel: BrokerSettingsViewModel = viewModel(
+                        viewModelStoreOwner = backStackEntry,
+                        factory = BrokerSettingsViewModel.factory(mqttConfigStore, mqttRemoteControl),
+                    )
+                    BrokerSettingsScreen(
+                        viewModel = viewModel,
+                        onSaved = { navController.popBackStack() },
                         onBack = { navController.popBackStack() },
                     )
                 }

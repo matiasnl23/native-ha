@@ -23,6 +23,44 @@
     <string name="setup_disconnect_confirm_action">Desconectar</string>
     <string name="setup_cancel">Cancelar</string>
     <string name="setup_back">Volver</string>
+    <string name="setup_remote_control_section">Otras opciones</string>
+
+    <!-- Broker settings (MQTT remote control) -->
+    <string name="remote_broker_title">Control remoto (MQTT)</string>
+    <string name="remote_broker_host_label">Host del broker</string>
+    <string name="remote_broker_host_placeholder">192.168.1.10</string>
+    <string name="remote_broker_host_error">Ingresá el host del broker</string>
+    <string name="remote_broker_port_label">Puerto</string>
+    <string name="remote_broker_port_error">El puerto debe estar entre 1 y 65535</string>
+    <string name="remote_broker_username_label">Usuario (opcional)</string>
+    <string name="remote_broker_password_label">Contraseña (opcional)</string>
+    <string name="remote_broker_show_password">Mostrar contraseña</string>
+    <string name="remote_broker_hide_password">Ocultar contraseña</string>
+    <string name="remote_broker_tls_label">Usar TLS</string>
+    <string name="remote_broker_device_name_label">Nombre del dispositivo</string>
+    <string name="remote_broker_device_name_error">Ingresá un nombre para el dispositivo</string>
+    <string name="remote_broker_test_connection">Probar conexión</string>
+    <string name="remote_broker_testing">Probando conexión…</string>
+    <string name="remote_broker_test_success">Conexión exitosa</string>
+    <string name="remote_broker_test_auth_failed">Error de autenticación: %1$s</string>
+    <string name="remote_broker_test_unreachable">No se pudo conectar: %1$s</string>
+    <string name="remote_broker_save">Guardar</string>
+    <string name="remote_broker_disable">Desactivar</string>
+    <string name="remote_broker_disable_confirm_title">¿Desactivar el control remoto?</string>
+    <string name="remote_broker_disable_confirm_message">Se borra la configuración del broker guardada. La tablet dejará de aceptar comandos de Home Assistant.</string>
+    <string name="remote_broker_disable_confirm_action">Desactivar</string>
+    <string name="remote_broker_cancel">Cancelar</string>
+    <string name="remote_broker_back">Volver</string>
+    <string name="remote_broker_status_label">Estado: %1$s</string>
+    <string name="remote_broker_status_disabled">Desactivado</string>
+    <string name="remote_broker_status_connecting">Conectando…</string>
+    <string name="remote_broker_status_connected">Conectado</string>
+    <string name="remote_broker_status_auth_failed">Error de autenticación: %1$s</string>
+    <string name="remote_broker_status_disconnected">Desconectado: %1$s</string>
+    <string name="remote_broker_notification_permission_denied">No se activaron las notificaciones. El control remoto puede seguir funcionando, pero sin aviso persistente.</string>
+
+    <!-- Screen-off overlay -->
+    <string name="remote_screen_overlay_description">Pantalla en reposo. Tocá para encender.</string>
 
     <!-- Dashboard -->
     <string name="dashboard_title">HA Kiosk</string>
