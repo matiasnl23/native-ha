@@ -4,6 +4,7 @@ import android.content.Context
 import com.matiasnl.hakiosk.camera.CameraModule
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardModule
+import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaModule
 import com.matiasnl.hakiosk.data.ha.HaRepository
@@ -18,5 +19,6 @@ class AppContainer(context: Context) {
     val haRepository: HaRepository get() = ha.repository
     val haCameraSource: HaCameraSource get() = ha.cameraSource
     val dashboardLayoutStore: DashboardLayoutStore get() = dashboard.layoutStore
+    val dashboardViewPreferencesStore: DashboardViewPreferencesStore get() = dashboard.viewPreferencesStore
     val camera: CameraModule by lazy { CameraModule(context.applicationContext, ha.cameraSource) }
 }
