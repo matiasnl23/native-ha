@@ -506,6 +506,39 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `moving a tile while editing re-packs the working copy and cancel discards it`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel(layout = mixedLayout())
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val originalLayout = layoutStore.layout.value
+        viewModel.enterEditMode()
+        val packingBefore = viewModel.uiState.value.packing
+
+        viewModel.moveEditTile(0, 3) // The 2×2 light goes after the oversized link; "＋" stays last.
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("t-spacer", "t-link", "t-missing-link", "t-light", AddTileUiState.ID), state.tiles.map { it.id })
+        assertTrue(state.isDirty)
+        assertTrue(packingBefore !== state.packing)
+        assertEquals(
+            listOf(
+                GridPlacement(0, 0, 1, 1),
+                GridPlacement(0, 1, 1, 1),
+                GridPlacement(1, 0, 3, 1),
+                GridPlacement(2, 0, 2, 2),
+                GridPlacement(0, 2, 1, 1), // "＋" back-fills the first hole.
+            ),
+            state.packing.placements,
+        )
+        assertEquals(originalLayout, layoutStore.layout.value)
+
+        viewModel.cancelEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(listOf("t-light", "t-spacer", "t-link", "t-missing-link"), viewModel.uiState.value.tiles.map { it.id })
+        assertEquals(originalLayout, layoutStore.layout.value)
+    }
+
+    @Test
     fun `isDirty flips once an edit is made`() = runTest {
         val (viewModel, _) = editingViewModel()
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }

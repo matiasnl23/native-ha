@@ -127,6 +127,46 @@ class DashboardEditControllerTest {
     }
 
     @Test
+    fun `move reorders the working copy and clamps the target to the last real tile`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+        controller.addSpacerTile() // id-1 -> tiles a, b, id-1
+
+        controller.moveTile(0, 2)
+        assertEquals(listOf("b", "id-1", "a"), controller.state.value.editingView!!.tiles.map { it.id })
+
+        controller.moveTile(0, 99) // Past the end (e.g. the "＋" tile's index): clamped to the last real tile.
+        assertEquals(listOf("id-1", "a", "b"), controller.state.value.editingView!!.tiles.map { it.id })
+
+        controller.moveTile(2, -5)
+        assertEquals(listOf("b", "id-1", "a"), controller.state.value.editingView!!.tiles.map { it.id })
+        assertEquals(layout, store.layout.value) // Nothing persisted.
+    }
+
+    @Test
+    fun `move ignores an out-of-range source such as the add tile, and same-index moves stay clean`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.moveTile(2, 0) // Index 2 is the synthetic "＋" in the UI; not a real tile.
+        controller.moveTile(-1, 0)
+        controller.moveTile(1, 1)
+        controller.moveTile(1, 7) // Clamps to 1, its own index.
+
+        assertEquals(listOf("a", "b"), controller.state.value.editingView!!.tiles.map { it.id })
+        assertFalse(controller.state.value.isDirty)
+    }
+
+    @Test
+    fun `move outside edit mode is a no-op`() {
+        val (controller, _, _) = controller()
+
+        controller.moveTile(0, 1)
+
+        assertNull(controller.state.value.working)
+    }
+
+    @Test
     fun `cancel discards the working copy`() {
         val (controller, store, _) = controller()
         controller.enter(layout, "main")

@@ -9,6 +9,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.UuidDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.addTile
+import com.matiasnl.hakiosk.data.dashboard.moveTile
 import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
 import com.matiasnl.hakiosk.data.dashboard.removeTile
 import com.matiasnl.hakiosk.data.dashboard.setGrid
@@ -54,12 +55,9 @@ data class DashboardEditState(
  * [DashboardLayoutStore.update] call and exits edit mode. [cancel] discards the working copy without
  * writing anything.
  *
- * Extension point for stage 4 (drag & drop): reorder can reuse [DashboardLayout.moveTile] the same
- * way the mutators below use the other pure ops in `DashboardLayoutOperations.kt` — read [state] for
- * the live working copy, call `moveTile` on hover through a new controller method, and the owning
- * ViewModel's existing repack-on-layout-change plumbing (keyed on the working copy, not on entity
- * updates) redraws it with no other wiring needed. Hit-testing belongs in the grid composable, using
- * the same `GridMetrics`/`GridPacking` the non-edit dashboard already renders with.
+ * Drag & drop reorder goes through [moveTile]: the owning ViewModel's repack-on-layout-change
+ * plumbing (keyed on the working copy, not on entity updates) redraws the new order with no other
+ * wiring. Hit-testing lives in the grid (`GridDragMath`), not here.
  */
 class DashboardEditController(
     private val layoutStore: DashboardLayoutStore,
@@ -121,6 +119,21 @@ class DashboardEditController(
     fun removeTile(tileId: String) = mutate { layout, viewId -> layout.removeTile(viewId, tileId) }
 
     fun setGrid(grid: DashboardGrid) = mutate { layout, viewId -> layout.setGrid(viewId, grid) }
+
+    /**
+     * Moves the tile at [fromIndex] to [toIndex] in the edited view's real tiles (the synthetic "＋"
+     * tile is not part of the working copy, so it never counts). An out-of-range [fromIndex] (e.g. the
+     * "＋" tile's index) is ignored; [toIndex] is clamped to the last real tile. Moving a tile onto its
+     * own index leaves the working copy untouched, so it doesn't mark the session dirty.
+     */
+    fun moveTile(fromIndex: Int, toIndex: Int) = mutate { layout, viewId ->
+        val tiles = layout.views.firstOrNull { it.id == viewId }?.tiles.orEmpty()
+        if (fromIndex !in tiles.indices || toIndex.coerceIn(0, tiles.lastIndex) == fromIndex) {
+            layout
+        } else {
+            layout.moveTile(viewId, fromIndex, toIndex)
+        }
+    }
 
     private fun mutate(transform: (DashboardLayout, viewId: String) -> DashboardLayout) {
         _state.update { state ->

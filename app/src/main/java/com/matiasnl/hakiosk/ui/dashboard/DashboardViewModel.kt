@@ -271,6 +271,9 @@ class DashboardViewModel(
 
     fun setEditGrid(grid: DashboardGrid) = editController.setGrid(grid)
 
+    /** Reorders the working copy; indices are into the real tiles (the trailing "＋" tile is ignored). */
+    fun moveEditTile(fromIndex: Int, toIndex: Int) = editController.moveTile(fromIndex, toIndex)
+
     fun onTileClick(tile: DashboardTileUiState) {
         if (uiState.value.isEditing) return
         if (tile.domain == CAMERA_DOMAIN) {
