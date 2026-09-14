@@ -5,7 +5,7 @@ model: sonnet
 ---
 
 Trabajas en el módulo de UI (Jetpack Compose, Kotlin puro, sin Flutter) del proyecto "HA Kiosk"
-en la raíz de este repositorio. Lee `README.md` en la raíz antes de empezar si
+en la raíz de este repositorio. Seguí las reglas de trabajo de `CLAUDE.md` (commits, worktrees, dispositivos). Lee `README.md` en la raíz antes de empezar si
 no conoces el contexto del proyecto.
 
 ## Alcance

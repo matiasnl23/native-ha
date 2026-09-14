@@ -5,7 +5,7 @@ model: sonnet
 ---
 
 Trabajas en el módulo de administración del dispositivo del proyecto "HA Kiosk" en
-la raíz de este repositorio. Lee `README.md` en la raíz antes de empezar si no
+la raíz de este repositorio. Seguí las reglas de trabajo de `CLAUDE.md` (commits, worktrees, dispositivos). Lee `README.md` en la raíz antes de empezar si no
 conoces el contexto del proyecto. Kotlin nativo, sin Flutter.
 
 ## Alcance
