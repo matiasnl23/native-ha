@@ -71,7 +71,11 @@ inactividad guardados aparte del layout (`dashboard_view_prefs`).
 - Recordar la última vista abierta (y, opcional en kiosko, volver a la principal tras inactividad).
 - Agente: `android-ui` (Sonnet).
 
-### Etapa 6 — Botones inteligentes por tipo (se planifica en detalle al llegar)
+### Etapa 6 — Botones inteligentes por tipo ✅
+Registro de comportamiento por dominio (`ui/dashboard/tiles/`). Luces: tocar alterna (configurable a
+"abrir controles"), mantener presionado abre el panel con brillo/temperatura/color según
+`supported_color_modes`. Alarma: tocar abre el panel de armado/desarmado con teclado para el código.
+Próximos dominios sugeridos: cover, climate, fan (velocidad), media_player.
 - Arquitectura de renderers por dominio: cómo se ve el botón, qué hace el toque y qué muestra el
   panel de detalle.
 - Luces: intensidad, temperatura de color o color según `supported_color_modes`.
