@@ -23,6 +23,24 @@ internal object HaProtocol {
     const val TYPE_PONG = "pong"
     const val EVENT_STATE_CHANGED = "state_changed"
 
+    const val CMD_FLOOR_REGISTRY_LIST = "config/floor_registry/list"
+    const val CMD_AREA_REGISTRY_LIST = "config/area_registry/list"
+    const val CMD_DEVICE_REGISTRY_LIST = "config/device_registry/list"
+
+    /** Compact entity registry (`ei`/`ai`/`di` keys, disabled entities excluded). HA 2023.3+. */
+    const val CMD_ENTITY_REGISTRY_LIST_FOR_DISPLAY = "config/entity_registry/list_for_display"
+
+    /** Full entity registry; only used as a fallback when [CMD_ENTITY_REGISTRY_LIST_FOR_DISPLAY] fails. */
+    const val CMD_ENTITY_REGISTRY_LIST = "config/entity_registry/list"
+
+    /** Registry change events; all are in HA's subscribe allowlist for non-admin users. */
+    val REGISTRY_EVENTS: List<String> = listOf(
+        "floor_registry_updated",
+        "area_registry_updated",
+        "device_registry_updated",
+        "entity_registry_updated",
+    )
+
     private val json = Json { ignoreUnknownKeys = true }
 
     /** The auth message carries the token: never log its string form. */
@@ -31,10 +49,18 @@ internal object HaProtocol {
         put("access_token", token)
     }
 
-    fun subscribeStateChanged(id: Int): JsonObject = buildJsonObject {
+    fun subscribeStateChanged(id: Int): JsonObject = subscribeEvents(id, EVENT_STATE_CHANGED)
+
+    fun subscribeEvents(id: Int, eventType: String): JsonObject = buildJsonObject {
         put("id", id)
         put("type", "subscribe_events")
-        put("event_type", EVENT_STATE_CHANGED)
+        put("event_type", eventType)
+    }
+
+    /** A parameterless command such as [CMD_AREA_REGISTRY_LIST]. */
+    fun command(id: Int, type: String): JsonObject = buildJsonObject {
+        put("id", id)
+        put("type", type)
     }
 
     fun getStates(id: Int): JsonObject = buildJsonObject {
