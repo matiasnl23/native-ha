@@ -55,6 +55,7 @@ import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.ui.camera.CameraThumbnailContent
 import com.matiasnl.hakiosk.ui.dashboard.edit.AddTileModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.EditTileModal
+import com.matiasnl.hakiosk.ui.dashboard.edit.GridSettingsModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.PreviewTile
 import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
@@ -69,7 +70,6 @@ fun DashboardScreen(
     viewModel: DashboardViewModel,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenViewSettings: (viewId: String) -> Unit,
     onOpenCamera: (entityId: String, label: String) -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
@@ -80,6 +80,7 @@ fun DashboardScreen(
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var editingTileId by remember { mutableStateOf<String?>(null) }
     var showAddTile by remember { mutableStateOf(false) }
+    var showGridSettings by remember { mutableStateOf(false) }
     val addTilePickerState by viewModel.addTilePicker.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
@@ -106,7 +107,6 @@ fun DashboardScreen(
         onTileClick = viewModel::onTileClick,
         onOpenEditor = onOpenEditor,
         onOpenSettings = onOpenSettings,
-        onOpenViewSettings = onOpenViewSettings,
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
         onDoneEdit = viewModel::doneEditMode,
@@ -115,8 +115,7 @@ fun DashboardScreen(
             viewModel.addTilePicker.reset()
             showAddTile = true
         },
-        // Opening the grid-settings modal is wired in once it's built.
-        onOpenGridSettings = {},
+        onOpenGridSettings = { showGridSettings = true },
         cameraThumbnail = cameraThumbnail,
     )
 
@@ -174,7 +173,25 @@ fun DashboardScreen(
             onDismiss = { showAddTile = false },
         )
     }
+
+    if (showGridSettings) {
+        GridSettingsModal(
+            grid = uiState.grid,
+            previewTiles = uiState.editablePreviewTiles(),
+            onApply = { grid ->
+                viewModel.setEditGrid(grid)
+                showGridSettings = false
+            },
+            onDismiss = { showGridSettings = false },
+        )
+    }
 }
+
+/** The working copy's real tiles (never the "＋" placeholder) as [PreviewTile]s, in order. */
+private fun DashboardUiState.editablePreviewTiles(): List<PreviewTile> =
+    tiles.filterNot { it is AddTileUiState }.map { tile ->
+        PreviewTile(colSpan = tile.colSpan, rowSpan = tile.rowSpan, isSpacer = tile is SpacerTileUiState)
+    }
 
 /** Resolves the per-tile-type title/label metadata and renders [EditTileModal], or nothing if the tile is gone. */
 @Composable
@@ -188,9 +205,7 @@ private fun EditTileModalHost(
     val editableTiles = uiState.tiles.filterNot { it is AddTileUiState }
     val index = editableTiles.indexOfFirst { it.id == tileId }
     val tile = editableTiles.getOrNull(index) ?: return
-    val previewTiles = editableTiles.map { t ->
-        PreviewTile(colSpan = t.colSpan, rowSpan = t.rowSpan, isSpacer = t is SpacerTileUiState)
-    }
+    val previewTiles = uiState.editablePreviewTiles()
     val viewLinkFallback = stringResource(R.string.dashboard_view_link_fallback)
     val (title, showLabelField, initialLabel, labelPlaceholder) = when (tile) {
         is SpacerTileUiState -> EditModalMeta(stringResource(R.string.dashboard_spacer_label), false, "", "")
@@ -231,7 +246,6 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenViewSettings: (viewId: String) -> Unit,
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
     onDoneEdit: () -> Unit,
@@ -256,11 +270,6 @@ private fun DashboardContent(
                         TextButton(onClick = onOpenGridSettings) { Text(stringResource(R.string.dashboard_edit_grid)) }
                         TextButton(onClick = onDoneEdit) { Text(stringResource(R.string.dashboard_edit_done)) }
                     } else {
-                        uiState.viewId?.let { viewId ->
-                            TextButton(onClick = { onOpenViewSettings(viewId) }) {
-                                Text(stringResource(R.string.dashboard_view_settings))
-                            }
-                        }
                         TextButton(onClick = onEnterEdit) { Text(stringResource(R.string.dashboard_edit_mode)) }
                         TextButton(onClick = onOpenEditor) { Text(stringResource(R.string.dashboard_edit)) }
                         TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.dashboard_settings)) }
@@ -725,7 +734,6 @@ private fun DashboardPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
-            onOpenViewSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
@@ -747,7 +755,6 @@ private fun DashboardEmptyPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
-            onOpenViewSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
@@ -787,7 +794,6 @@ private fun DashboardEditModePreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
-            onOpenViewSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
             onDoneEdit = {},
