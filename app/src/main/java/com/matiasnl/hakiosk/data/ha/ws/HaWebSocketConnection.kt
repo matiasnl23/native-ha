@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -44,8 +45,29 @@ class HaConnectionLostException(message: String) : Exception(message)
 /** HA answered `auth_invalid`. Retrying with the same token is pointless. */
 class HaAuthInvalidException(message: String) : Exception(message)
 
-/** A request got an error `result`, timed out, or could not be sent. */
-class HaRequestException(message: String) : Exception(message)
+/**
+ * A request got an error `result`, timed out, or could not be sent. [code] is HA's error code
+ * (e.g. `not_found`) or a local one: [CODE_NOT_CONNECTED], [CODE_TIMEOUT], [CODE_CONNECTION_LOST].
+ */
+class HaRequestException(message: String, val code: String? = null) : Exception(message) {
+    companion object {
+        const val CODE_NOT_CONNECTED = "not_connected"
+        const val CODE_TIMEOUT = "timeout"
+        const val CODE_CONNECTION_LOST = "connection_lost"
+    }
+}
+
+/**
+ * Events of one per-request subscription (e.g. `camera/webrtc/offer`). [events] yields the `event`
+ * payload of each message routed to [id]; it is closed with a [HaRequestException] (code
+ * [HaRequestException.CODE_CONNECTION_LOST]) when the connection ends. [close] stops routing and
+ * asks HA to end the subscription; it is idempotent and safe to call from a cancelled coroutine.
+ */
+internal interface HaSubscription {
+    val id: Int
+    val events: ReceiveChannel<JsonObject>
+    fun close()
+}
 
 internal interface HaConnectionCallbacks {
     fun onAuthenticated(haVersion: String?)
@@ -84,6 +106,7 @@ internal class HaWebSocketConnection(
 
     private val incoming = Channel<Frame>(Channel.UNLIMITED)
     private val pending = ConcurrentHashMap<Int, Pending>()
+    private val subscriptions = ConcurrentHashMap<Int, Channel<JsonObject>>()
     private val sendLock = Any()
     private var nextId = 1
 
@@ -150,11 +173,14 @@ internal class HaWebSocketConnection(
             ws.cancel()
             throw e
         } finally {
-            webSocket = null
+            // Under sendLock: nothing can register a request or subscription after this point.
+            synchronized(sendLock) { webSocket = null }
             incoming.close()
-            val closed = HaRequestException("Connection closed")
+            val closed = HaRequestException("Connection closed", HaRequestException.CODE_CONNECTION_LOST)
             pending.values.forEach { it.deferred.completeExceptionally(closed) }
             pending.clear()
+            subscriptions.values.forEach { it.close(closed) }
+            subscriptions.clear()
         }
     }
 
@@ -169,24 +195,84 @@ internal class HaWebSocketConnection(
         message: (id: Int) -> JsonObject,
     ): JsonElement {
         val entry = Pending(CompletableDeferred(), onResult)
-        val id: Int
-        // Ids must be strictly increasing on the wire, so allocation and send are atomic.
-        synchronized(sendLock) {
-            val ws = webSocket ?: throw HaRequestException("Not connected")
-            id = nextId++
-            pending[id] = entry
-            if (!ws.send(message(id).toString())) {
-                pending.remove(id)
-                throw HaRequestException("Connection closed")
-            }
-        }
+        val id = send(entry, message)
         try {
-            return withTimeoutOrNull(timeoutMillis) { entry.deferred.await() }
-                ?: throw HaRequestException("Request timed out")
+            return awaitResult(entry, timeoutMillis)
         } finally {
             pending.remove(id)
         }
     }
+
+    /**
+     * Starts a subscription command whose events carry the request id (e.g. `camera/webrtc/offer`)
+     * and suspends until its `result`. The event channel is registered before the request is sent,
+     * so no event is lost. Throws [HaRequestException] on error result, timeout or closed connection.
+     */
+    suspend fun subscribe(
+        timeoutMillis: Long = settings.requestTimeoutMillis,
+        message: (id: Int) -> JsonObject,
+    ): HaSubscription {
+        val entry = Pending(CompletableDeferred(), null)
+        val channel = Channel<JsonObject>(MAX_SUBSCRIPTION_BACKLOG)
+        val id = send(entry, message) { id -> subscriptions[id] = channel }
+        val subscription = Subscription(id, channel)
+        try {
+            awaitResult(entry, timeoutMillis)
+            return subscription
+        } catch (e: Throwable) {
+            // On timeout (or cancellation) HA may have subscribed anyway: ask it to stop.
+            subscription.close(notifyServer = e !is HaRequestException || e.code == HaRequestException.CODE_TIMEOUT)
+            throw e
+        } finally {
+            pending.remove(id)
+        }
+    }
+
+    /** Number of subscriptions whose events are currently routed. For tests. */
+    internal val activeSubscriptionCount: Int get() = subscriptions.size
+
+    private inner class Subscription(
+        override val id: Int,
+        private val channel: Channel<JsonObject>,
+    ) : HaSubscription {
+        override val events: ReceiveChannel<JsonObject> get() = channel
+
+        override fun close() = close(notifyServer = true)
+
+        fun close(notifyServer: Boolean) {
+            if (!subscriptions.remove(id, channel)) return
+            channel.close()
+            if (notifyServer) sendWithoutReply { newId -> HaProtocol.unsubscribeEvents(newId, id) }
+        }
+    }
+
+    /** Allocates an id and sends atomically: ids must be strictly increasing on the wire. */
+    private fun send(entry: Pending, message: (id: Int) -> JsonObject, register: (Int) -> Unit = {}): Int {
+        synchronized(sendLock) {
+            val ws = webSocket ?: throw HaRequestException("Not connected", HaRequestException.CODE_NOT_CONNECTED)
+            val id = nextId++
+            pending[id] = entry
+            register(id)
+            if (!ws.send(message(id).toString())) {
+                pending.remove(id)
+                subscriptions.remove(id)
+                throw HaRequestException("Connection closed", HaRequestException.CODE_CONNECTION_LOST)
+            }
+            return id
+        }
+    }
+
+    /** Best-effort message whose `result` is ignored (unknown ids are dropped by the read loop). */
+    private fun sendWithoutReply(message: (id: Int) -> JsonObject) {
+        synchronized(sendLock) {
+            val ws = webSocket ?: return
+            ws.send(message(nextId++).toString())
+        }
+    }
+
+    private suspend fun awaitResult(entry: Pending, timeoutMillis: Long): JsonElement =
+        withTimeoutOrNull(timeoutMillis) { entry.deferred.await() }
+            ?: throw HaRequestException("Request timed out", HaRequestException.CODE_TIMEOUT)
 
     private suspend fun authenticate(ws: WebSocket, callbacks: HaConnectionCallbacks) {
         val first = receiveMessage()
@@ -250,8 +336,9 @@ internal class HaWebSocketConnection(
                     }
                 } else {
                     val error = message["error"] as? JsonObject
-                    val text = error?.get("message").stringOrNull() ?: error?.get("code").stringOrNull()
-                    entry.deferred.completeExceptionally(HaRequestException(text ?: "Request failed"))
+                    val code = error?.get("code").stringOrNull()
+                    val text = error?.get("message").stringOrNull() ?: code
+                    entry.deferred.completeExceptionally(HaRequestException(text ?: "Request failed", code))
                 }
             }
 
@@ -259,6 +346,14 @@ internal class HaWebSocketConnection(
 
             HaProtocol.TYPE_EVENT -> {
                 val event = message["event"] as? JsonObject ?: return
+                val subscriptionId = message.id()
+                if (subscriptionId != null) {
+                    val subscription = subscriptions[subscriptionId]
+                    if (subscription != null) {
+                        routeSubscriptionEvent(subscriptionId, subscription, event)
+                        return
+                    }
+                }
                 val eventType = event["event_type"].stringOrNull()
                 if (eventType in HaProtocol.REGISTRY_EVENTS) {
                     callbacks.onRegistryUpdated()
@@ -276,6 +371,13 @@ internal class HaWebSocketConnection(
         }
     }
 
+    private fun routeSubscriptionEvent(id: Int, subscription: Channel<JsonObject>, event: JsonObject) {
+        if (subscription.trySend(event).isSuccess || !subscriptions.remove(id, subscription)) return
+        // A collector this far behind is stuck; end its subscription instead of buffering without limit.
+        subscription.close(HaRequestException("Subscription event backlog overflow"))
+        sendWithoutReply { newId -> HaProtocol.unsubscribeEvents(newId, id) }
+    }
+
     private suspend fun heartbeatLoop() {
         while (true) {
             delay(settings.heartbeatIntervalMillis)
@@ -289,5 +391,8 @@ internal class HaWebSocketConnection(
 
     private companion object {
         const val MAX_BATCH = 256
+
+        /** Unconsumed events kept per subscription; WebRTC signaling sends a few dozen at most. */
+        const val MAX_SUBSCRIPTION_BACKLOG = 256
     }
 }

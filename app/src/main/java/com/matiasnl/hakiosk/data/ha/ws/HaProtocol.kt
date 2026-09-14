@@ -57,6 +57,16 @@ internal object HaProtocol {
         put("event_type", eventType)
     }
 
+    /**
+     * Ends the subscription started by request [subscriptionId]. HA's handler works for any entry in
+     * the connection's subscriptions, not only `subscribe_events` (e.g. it closes a WebRTC session).
+     */
+    fun unsubscribeEvents(id: Int, subscriptionId: Int): JsonObject = buildJsonObject {
+        put("id", id)
+        put("type", "unsubscribe_events")
+        put("subscription", subscriptionId)
+    }
+
     /** A parameterless command such as [CMD_AREA_REGISTRY_LIST]. */
     fun command(id: Int, type: String): JsonObject = buildJsonObject {
         put("id", id)

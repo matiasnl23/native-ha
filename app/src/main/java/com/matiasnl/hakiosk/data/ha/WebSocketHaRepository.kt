@@ -131,6 +131,12 @@ class WebSocketHaRepository(
         }
     }
 
+    /**
+     * The connection while [connectionState] is Connected, else null. For other data-layer clients
+     * (e.g. the camera source) that send their own commands; never exposed outside `data.ha`.
+     */
+    internal fun activeConnection(): HaWebSocketConnection? = activeConnection
+
     override suspend fun testConnection(config: HaServerConfig): HaConnectionTestResult =
         restClient.testConnection(config)
 
