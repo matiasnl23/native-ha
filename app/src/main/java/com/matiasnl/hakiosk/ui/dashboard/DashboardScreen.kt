@@ -53,6 +53,7 @@ import com.matiasnl.hakiosk.R
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid as DashboardGridSettings
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.ui.camera.CameraThumbnailContent
+import com.matiasnl.hakiosk.ui.dashboard.edit.AddTileModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.EditTileModal
 import com.matiasnl.hakiosk.ui.dashboard.edit.PreviewTile
 import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
@@ -78,6 +79,8 @@ fun DashboardScreen(
     val currentOnOpenCamera by rememberUpdatedState(onOpenCamera)
     var showDiscardConfirm by remember { mutableStateOf(false) }
     var editingTileId by remember { mutableStateOf<String?>(null) }
+    var showAddTile by remember { mutableStateOf(false) }
+    val addTilePickerState by viewModel.addTilePicker.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
         viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label) }
@@ -108,8 +111,11 @@ fun DashboardScreen(
         onRequestCancelEdit = requestCancelEdit,
         onDoneEdit = viewModel::doneEditMode,
         onEditTile = { tileId -> editingTileId = tileId },
-        // Opening the add-tile/grid-settings modals is wired in as each one is built.
-        onAddTile = {},
+        onAddTile = {
+            viewModel.addTilePicker.reset()
+            showAddTile = true
+        },
+        // Opening the grid-settings modal is wired in once it's built.
         onOpenGridSettings = {},
         cameraThumbnail = cameraThumbnail,
     )
@@ -151,6 +157,21 @@ fun DashboardScreen(
                 editingTileId = null
             },
             onDismiss = { editingTileId = null },
+        )
+    }
+
+    if (showAddTile) {
+        AddTileModal(
+            pickerState = addTilePickerState,
+            onQueryChange = viewModel.addTilePicker::onQueryChange,
+            onDomainFilterChange = viewModel.addTilePicker::onDomainFilterChange,
+            onFloorFilterChange = viewModel.addTilePicker::onFloorFilterChange,
+            onAreaFilterChange = viewModel.addTilePicker::onAreaFilterChange,
+            onPickEntity = viewModel::addEntityTile,
+            onPickSpacer = viewModel::addSpacerTile,
+            linkTargets = uiState.linkTargets,
+            onPickLink = viewModel::addLinkTile,
+            onDismiss = { showAddTile = false },
         )
     }
 }

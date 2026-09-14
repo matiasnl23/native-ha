@@ -59,6 +59,16 @@
     <string name="edit_tile_cancel">Cancelar</string>
     <string name="edit_tile_apply">Aplicar</string>
     <string name="edit_tile_link_title">Link a %1$s</string>
+
+    <!-- Add tile modal -->
+    <string name="add_tile_title">Agregar botón</string>
+    <string name="add_tile_option_entity">Entidad</string>
+    <string name="add_tile_option_spacer">Espacio</string>
+    <string name="add_tile_option_link">Link a vista</string>
+    <string name="add_tile_spacer_hint">Un espacio vacío para separar visualmente grupos de botones.</string>
+    <string name="add_tile_spacer_action">Agregar espacio</string>
+    <string name="add_tile_link_empty">Todavía no hay otras vistas. Vas a poder crearlas más adelante.</string>
+    <string name="add_tile_cancel">Cancelar</string>
     <string name="connection_connecting">Conectando con Home Assistant…</string>
     <string name="connection_auth_failed">Token rechazado: %1$s</string>
     <string name="connection_auth_failed_action">Configurar</string>
