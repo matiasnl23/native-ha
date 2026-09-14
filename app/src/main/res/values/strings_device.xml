@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Textos del control remoto por MQTT (servicio en primer plano). Separado de strings.xml a propósito. -->
+<resources>
+    <string name="remote_control_channel_name">Control remoto</string>
+    <string name="remote_control_channel_description">Mantiene la conexión con Home Assistant para controlar la tablet a distancia.</string>
+    <string name="remote_control_notification_title">Control remoto de Home Assistant</string>
+    <string name="remote_control_state_connected">Conectado</string>
+    <string name="remote_control_state_connecting">Conectando…</string>
+    <string name="remote_control_state_disconnected">Sin conexión, reintentando…</string>
+    <string name="remote_control_state_auth_failed">El broker rechazó el usuario o la contraseña</string>
+    <string name="remote_control_state_disabled">Desactivado</string>
+</resources>

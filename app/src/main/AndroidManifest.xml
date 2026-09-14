@@ -3,8 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- libwebrtc's network monitor registers a ConnectivityManager callback (normal permission, no prompt). -->
+    <!-- libwebrtc's network monitor and the MQTT reconnection register ConnectivityManager callbacks (normal permission, no prompt). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Remote control over MQTT: foreground service keeping the broker connection alive 24/7. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Its notification; requested at runtime on Android 13+ by the UI. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".HaKioskApp"
@@ -29,6 +34,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".data.device.service.RemoteControlService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent MQTT connection to the user's self-hosted Home Assistant broker so this wall-mounted kiosk tablet can be controlled remotely (screen, dashboard view, cameras) 24/7." />
+        </service>
     </application>
 
 </manifest>
