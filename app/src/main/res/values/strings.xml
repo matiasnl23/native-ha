@@ -36,6 +36,17 @@
     <string name="dashboard_state_missing">Entidad no encontrada</string>
     <string name="dashboard_view_link_fallback">Vista</string>
     <string name="dashboard_view_link_hint">Ir a la vista</string>
+    <string name="dashboard_edit_mode">Editar</string>
+    <string name="dashboard_edit_mode_title">Editando el dashboard</string>
+    <string name="dashboard_edit_cancel">Cancelar</string>
+    <string name="dashboard_edit_grid">Grilla</string>
+    <string name="dashboard_edit_done">Listo</string>
+    <string name="dashboard_edit_discard_title">¿Descartar los cambios?</string>
+    <string name="dashboard_edit_discard_message">Todavía no guardaste los cambios de este dashboard.</string>
+    <string name="dashboard_edit_discard_confirm">Descartar</string>
+    <string name="dashboard_edit_discard_keep_editing">Seguir editando</string>
+    <string name="dashboard_spacer_label">Espacio</string>
+    <string name="dashboard_add_tile">Agregar botón</string>
     <string name="connection_idle">Sin conexión con Home Assistant</string>
     <string name="connection_connecting">Conectando con Home Assistant…</string>
     <string name="connection_auth_failed">Token rechazado: %1$s</string>
