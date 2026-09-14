@@ -63,6 +63,43 @@ class EditorViewModelTest {
         return Triple(viewModel, repository, configStore)
     }
 
+    private fun manyEntities(count: Int) = (0 until count).map { entity("light.e%03d".format(it), "Entity %03d".format(it)) }
+
+    @Test
+    fun `available list is capped and reports the total number of matches`() = runTest {
+        val (viewModel, _, _) = TestScopeViewModel(manyEntities(120))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        val state = viewModel.uiState.value
+        assertEquals(EditorViewModel.MAX_AVAILABLE_RESULTS, state.availableEntities.size)
+        assertEquals(120, state.totalMatches)
+        assertEquals("Entity 000", state.availableEntities.first().friendlyName)
+    }
+
+    @Test
+    fun `search narrows matches below the cap`() = runTest {
+        val (viewModel, _, _) = TestScopeViewModel(manyEntities(120))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onQueryChange("entity 11")
+
+        val state = viewModel.uiState.value
+        assertEquals(10, state.totalMatches)
+        assertEquals((110..119).map { "light.e$it" }, state.availableEntities.map { it.entityId })
+    }
+
+    @Test
+    fun `entity state changes do not rebuild the editor state`() = runTest {
+        val (viewModel, repository, _) = TestScopeViewModel(listOf(entity("light.a", "A"), entity("light.b", "B")))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val before = viewModel.uiState.value
+
+        repository.callService("light", "toggle", "light.a")
+
+        assertEquals("off", repository.entities.value.getValue("light.a").state)
+        assertTrue(before === viewModel.uiState.value)
+    }
+
     @Test
     fun `loads existing tiles and lists all entities as available`() = runTest {
         val (viewModel, _, _) = TestScopeViewModel(

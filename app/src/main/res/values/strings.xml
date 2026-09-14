@@ -75,5 +75,6 @@
     <string name="editor_add">Agregar</string>
     <string name="editor_already_added">Ya agregada</string>
     <string name="editor_no_results">No se encontraron entidades</string>
+    <string name="editor_results_truncated">Mostrando %1$d de %2$d entidades. Usá la búsqueda o los filtros para afinar.</string>
     <string name="editor_save">Guardar</string>
 </resources>

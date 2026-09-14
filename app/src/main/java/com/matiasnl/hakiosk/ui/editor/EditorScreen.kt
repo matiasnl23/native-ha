@@ -233,6 +233,19 @@ private fun EditorContent(
                 }
             }
 
+            if (uiState.totalMatches > uiState.availableEntities.size) {
+                item {
+                    Text(
+                        text = stringResource(
+                            R.string.editor_results_truncated,
+                            uiState.availableEntities.size,
+                            uiState.totalMatches,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (uiState.availableEntities.isEmpty()) {
                 item {
                     Text(

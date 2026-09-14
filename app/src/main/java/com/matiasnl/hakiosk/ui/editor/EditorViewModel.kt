@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -44,7 +45,10 @@ data class EditorAvailableRow(
 
 data class EditorUiState(
     val currentTiles: List<EditorTileRow> = emptyList(),
+    /** First [EditorViewModel.MAX_AVAILABLE_RESULTS] matches, sorted by name. */
     val availableEntities: List<EditorAvailableRow> = emptyList(),
+    /** How many entities match the search and filters; larger than [availableEntities] when truncated. */
+    val totalMatches: Int = 0,
     val domains: List<String> = emptyList(),
     /** Floors known to Home Assistant, in registry order. Empty hides the floor filter row. */
     val floors: List<HaFloor> = emptyList(),
@@ -61,7 +65,11 @@ data class EditorUiState(
 
 /**
  * Drives the dashboard editor: a working copy of the tile list (not written to
- * [dashboardConfigStore] until [save]) joined with every known entity for the "add" list.
+ * [dashboardConfigStore] until [save]) joined with a search index of every known entity.
+ *
+ * Real installs have thousands of entities whose states change every second, so the editor works on
+ * a lightweight [EntityIndex] that is only rebuilt when entities are added, removed or renamed, and
+ * shows at most [MAX_AVAILABLE_RESULTS] matches: the user narrows them with search and filters.
  */
 class EditorViewModel(
     private val haRepository: HaRepository,
@@ -91,8 +99,7 @@ class EditorViewModel(
         }
     }
 
-    /** Search/domain/floor/area filters, combined into one value so [registryLookup] and the tile
-     * flows only need to be joined with a single additional flow below. */
+    /** Search/domain/floor/area filters, combined into one value so the ui state joins a single flow. */
     private data class Filters(
         val query: String,
         val domainFilter: String?,
@@ -109,8 +116,7 @@ class EditorViewModel(
         Filters(query, domainFilter, floorFilter, areaFilter)
     }
 
-    /** Precomputed area/floor lookups, recomputed only when [HaRepository.registry] itself emits
-     * (not on every unrelated filter/search change), since the registry can hold many entries. */
+    /** Precomputed area/floor lookups, recomputed only when [HaRepository.registry] itself emits. */
     private val registryLookup: Flow<RegistryLookup> = haRepository.registry.map { registry ->
         RegistryLookup(
             registry = registry,
@@ -119,15 +125,34 @@ class EditorViewModel(
         )
     }
 
+    private var lastIndex = EntityIndex(emptyList())
+
+    /** Emits a new index only when entities are added, removed or renamed; state changes are ignored. */
+    private val entityIndex: Flow<EntityIndex> = haRepository.entities
+        .map(::indexFor)
+        .distinctUntilChanged { old, new -> old === new }
+
     val uiState: StateFlow<EditorUiState> = combine(
         _workingTiles,
-        haRepository.entities,
+        entityIndex,
         filters,
         registryLookup,
         _isLoaded,
-    ) { tiles, entities, filters, lookup, isLoaded ->
-        buildUiState(tiles, entities, filters, lookup, isLoaded)
+    ) { tiles, index, filters, lookup, isLoaded ->
+        buildUiState(tiles, index, filters, lookup, isLoaded)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EditorUiState())
+
+    /** Reuses the previous index (same instance) unless the entity set or a friendly name changed. */
+    private fun indexFor(entities: Map<String, HaEntity>): EntityIndex {
+        val previous = lastIndex
+        val unchanged = previous.items.size == entities.size &&
+            previous.items.all { item -> entities[item.entityId]?.friendlyName == item.friendlyName }
+        if (unchanged) return previous
+        val items = entities.values
+            .map { EntityIndexItem(it.entityId, it.friendlyName, it.domain) }
+            .sortedBy { it.nameKey }
+        return EntityIndex(items).also { lastIndex = it }
+    }
 
     /** Applies [edit] to the working tiles now, and again once a pending initial load arrives. */
     private fun editWorkingTiles(edit: (List<DashboardTile>) -> List<DashboardTile>) {
@@ -139,60 +164,40 @@ class EditorViewModel(
 
     private fun buildUiState(
         tiles: List<DashboardTile>,
-        entities: Map<String, HaEntity>,
+        index: EntityIndex,
         filters: Filters,
         lookup: RegistryLookup,
         isLoaded: Boolean,
     ): EditorUiState {
         val registry = lookup.registry
-        val tileIds = tiles.map { it.entityId }.toSet()
+        val tileIds = tiles.mapTo(HashSet()) { it.entityId }
         val currentTiles = tiles.map { tile ->
             EditorTileRow(
                 entityId = tile.entityId,
-                friendlyName = entities[tile.entityId]?.friendlyName ?: tile.entityId,
+                friendlyName = index.byId[tile.entityId]?.friendlyName ?: tile.entityId,
                 label = tile.label,
             )
         }
-        val normalizedQuery = filters.query.trim().lowercase()
-        val areaFilter = filters.areaFilter
-        val floorFilter = filters.floorFilter
-        val availableEntities = entities.values
-            .asSequence()
-            .filter { filters.domainFilter == null || it.domain == filters.domainFilter }
-            .filter {
-                normalizedQuery.isEmpty() ||
-                    it.friendlyName.lowercase().contains(normalizedQuery) ||
-                    it.entityId.lowercase().contains(normalizedQuery)
-            }
-            .filter { entity ->
-                when (areaFilter) {
-                    null -> true
-                    NO_AREA_ID -> registry.entityAreas[entity.entityId] == null
-                    else -> registry.entityAreas[entity.entityId] == areaFilter
-                }
-            }
-            .filter { entity ->
-                if (floorFilter == null) return@filter true
-                val areaId = registry.entityAreas[entity.entityId] ?: return@filter false
-                lookup.areaById[areaId]?.floorId == floorFilter
-            }
-            .sortedBy { it.friendlyName.lowercase() }
-            .map { entity ->
-                val area = registry.entityAreas[entity.entityId]?.let { lookup.areaById[it] }
+        val query = filters.query.trim().lowercase()
+        val matches = index.items.asSequence().filter { it.matches(query, filters, lookup) }
+        val totalMatches = matches.count()
+        val availableEntities = matches
+            .take(MAX_AVAILABLE_RESULTS)
+            .map { item ->
+                val area = registry.entityAreas[item.entityId]?.let { lookup.areaById[it] }
                 val floor = area?.floorId?.let { lookup.floorById[it] }
                 EditorAvailableRow(
-                    entityId = entity.entityId,
-                    friendlyName = entity.friendlyName,
-                    domain = entity.domain,
-                    alreadyAdded = entity.entityId in tileIds,
+                    entityId = item.entityId,
+                    friendlyName = item.friendlyName,
+                    domain = item.domain,
+                    alreadyAdded = item.entityId in tileIds,
                     areaName = area?.name,
                     floorName = floor?.name,
                 )
             }
             .toList()
-        val domains = entities.values.map { it.domain }.distinct().sorted()
-        val visibleAreas = if (floorFilter != null) {
-            registry.areas.filter { it.floorId == floorFilter }
+        val visibleAreas = if (filters.floorFilter != null) {
+            registry.areas.filter { it.floorId == filters.floorFilter }
         } else {
             registry.areas
         }
@@ -200,15 +205,32 @@ class EditorViewModel(
         return EditorUiState(
             currentTiles = currentTiles,
             availableEntities = availableEntities,
-            domains = domains,
+            totalMatches = totalMatches,
+            domains = index.domains,
             floors = registry.floors,
             areas = visibleAreas,
             query = filters.query,
             domainFilter = filters.domainFilter,
-            floorFilter = floorFilter,
-            areaFilter = areaFilter,
+            floorFilter = filters.floorFilter,
+            areaFilter = filters.areaFilter,
             isLoaded = isLoaded,
         )
+    }
+
+    /** [query] is already trimmed and lowercased. */
+    private fun EntityIndexItem.matches(query: String, filters: Filters, lookup: RegistryLookup): Boolean {
+        if (filters.domainFilter != null && domain != filters.domainFilter) return false
+        if (query.isNotEmpty() && query !in nameKey && query !in idKey) return false
+        val areaId = lookup.registry.entityAreas[entityId]
+        when (filters.areaFilter) {
+            null -> Unit
+            NO_AREA_ID -> if (areaId != null) return false
+            else -> if (areaId != filters.areaFilter) return false
+        }
+        if (filters.floorFilter != null) {
+            if (areaId == null || lookup.areaById[areaId]?.floorId != filters.floorFilter) return false
+        }
+        return true
     }
 
     fun onQueryChange(value: String) {
@@ -284,6 +306,9 @@ class EditorViewModel(
         /** Sentinel [EditorUiState.areaFilter] value selecting entities with no assigned area. */
         const val NO_AREA_ID = "__no_area__"
 
+        /** Rows shown in the "add" list; the rest is reached by narrowing the search or filters. */
+        const val MAX_AVAILABLE_RESULTS = 50
+
         fun factory(haRepository: HaRepository, dashboardConfigStore: DashboardConfigStore) = viewModelFactory {
             initializer { EditorViewModel(haRepository, dashboardConfigStore) }
         }
@@ -296,3 +321,15 @@ private data class RegistryLookup(
     val areaById: Map<String, HaArea>,
     val floorById: Map<String, HaFloor>,
 )
+
+/** Search-relevant fields of one entity, with lowercase keys precomputed once per index build. */
+private class EntityIndexItem(val entityId: String, val friendlyName: String, val domain: String) {
+    val nameKey: String = friendlyName.lowercase()
+    val idKey: String = entityId.lowercase()
+}
+
+/** Entities sorted by name, plus lookups derived from them. Compared by identity, never by content. */
+private class EntityIndex(val items: List<EntityIndexItem>) {
+    val byId: Map<String, EntityIndexItem> = items.associateBy { it.entityId }
+    val domains: List<String> = items.mapTo(HashSet()) { it.domain }.sorted()
+}
