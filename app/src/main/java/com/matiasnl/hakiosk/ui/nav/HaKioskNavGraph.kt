@@ -22,6 +22,7 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.matiasnl.hakiosk.camera.CameraModule
@@ -40,6 +41,7 @@ import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
 import com.matiasnl.hakiosk.ui.remote.BrokerSettingsScreen
 import com.matiasnl.hakiosk.ui.remote.BrokerSettingsViewModel
+import com.matiasnl.hakiosk.ui.remote.DeviceUiStateReporter
 import com.matiasnl.hakiosk.ui.remote.RemoteCommandNavigator
 import com.matiasnl.hakiosk.ui.remote.RemoteNavigationActions
 import com.matiasnl.hakiosk.ui.remote.ScreenControlViewModel
@@ -96,11 +98,23 @@ fun HaKioskNavGraph(
     val screenState by screenControlViewModel.uiState.collectAsStateWithLifecycle()
     WindowBrightnessEffect(screenState.screenOn, screenState.brightnessPercent)
 
+    val deviceUiStateReporter: DeviceUiStateReporter = viewModel(
+        factory = DeviceUiStateReporter.factory(
+            remoteControlBridge,
+            dashboardLayoutStore,
+            haRepository,
+            screenControlViewModel.uiState,
+        ),
+    )
+
     when (val destination = startDestination) {
         StartDestination.Loading -> Surface(modifier = Modifier.fillMaxSize()) {}
         StartDestination.Setup, StartDestination.Dashboard -> {
             val navController = rememberNavController()
-            val latestOnUserActivity by rememberUpdatedState(screenControlViewModel::onUserActivity)
+            val latestOnUserActivity by rememberUpdatedState {
+                screenControlViewModel.onUserActivity()
+                deviceUiStateReporter.onUserActivity()
+            }
 
             // Tracks the current DashboardViewModel instance (only set while its back stack entry
             // exists), so remote navigation commands can drive it regardless of which screen shows.
@@ -143,6 +157,25 @@ fun HaKioskNavGraph(
                 )
             }
             LaunchedEffect(navigator) { navigator.start() }
+
+            // Reports the settled view (survives the dashboard not being the current screen) and the
+            // open camera entity, if any, to Home Assistant through deviceUiStateReporter.
+            var reportedViewId by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(dashboardViewModel) {
+                val currentDashboardViewModel = dashboardViewModel
+                if (currentDashboardViewModel == null) {
+                    reportedViewId = null
+                } else {
+                    currentDashboardViewModel.uiState.collect { state -> reportedViewId = state.viewId }
+                }
+            }
+            val currentBackStackEntry by navController.currentBackStackEntryAsState()
+            val openCameraEntityId = currentBackStackEntry
+                ?.takeIf { it.destination.hasRoute<CameraRoute>() }
+                ?.let { it.toRoute<CameraRoute>().entityId }
+            LaunchedEffect(reportedViewId, openCameraEntityId) {
+                deviceUiStateReporter.reportNavigation(reportedViewId, openCameraEntityId)
+            }
 
             Box(
                 // Any touch anywhere in the app restarts the screen-off countdown. Observed in the
@@ -249,7 +282,12 @@ fun HaKioskNavGraph(
                     }
                 }
                 if (!screenState.screenOn) {
-                    ScreenOffOverlay(onTouch = screenControlViewModel::turnScreenOn)
+                    ScreenOffOverlay(
+                        onTouch = {
+                            screenControlViewModel.turnScreenOn()
+                            deviceUiStateReporter.onOverlayTouch()
+                        },
+                    )
                 }
             }
         }
