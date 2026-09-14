@@ -41,7 +41,9 @@ Incluye además la extracción del buscador de entidades a `ui/picker` (preparac
 - Ajustes de la vista: columnas y filas visibles.
 - Agente: `android-ui` (Opus: layout propio y rendimiento en la tablet).
 
-### Etapa 3 — Modo edición con modales
+### Etapa 3 — Modo edición con modales ✅
+Los ajustes de grilla quedaron como modal dentro del modo edición (editan la copia de trabajo) y el
+editor viejo quedó como "Ordenar lista" hasta la etapa 4.
 - Botón "Editar" en el dashboard: cada botón muestra un ícono de editar y aparece un botón **＋** al
   final.
 - Modal de editar botón: nombre, tamaño (ancho/alto con vista previa), quitar. Estructura extensible
