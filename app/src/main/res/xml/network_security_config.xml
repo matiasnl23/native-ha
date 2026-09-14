@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    HA Kiosk talks to a self-hosted Home Assistant whose URL is chosen by the user:
+    - Cleartext is permitted so plain http://<LAN IP>:8123 servers work.
+    - https uses normal TLS validation (certificate + hostname) against system CAs, plus
+      user-installed CAs so a self-signed HA certificate works once its CA is installed on the tablet.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
