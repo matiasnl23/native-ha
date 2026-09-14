@@ -32,7 +32,8 @@ Sin cambios visibles. Base de todo lo demás. Migración verificada con los boto
   vista; cambiar grilla de una vista.
 - Agente: `android-ui` (Sonnet).
 
-### Etapa 2 — Motor de grilla + ajustes de la vista
+### Etapa 2 — Motor de grilla + ajustes de la vista ✅
+Incluye además la extracción del buscador de entidades a `ui/picker` (preparación de la etapa 3).
 - Algoritmo de empaquetado (Kotlin puro, testeado): lista ordenada + tamaños → posiciones. Spans
   mayores que las columnas se recortan.
 - Composable de grilla propia: celdas según columnas/filas visibles de la vista, scroll vertical,
