@@ -13,6 +13,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.matiasnl.hakiosk.R
+import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.TileColors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.TriggeredPulse
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmColors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmStateText
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.tone
 
 /** The localized state line for [summary], or null to fall back to the raw state. */
 @Composable
@@ -23,17 +29,31 @@ fun summaryStateText(summary: TileSummary): String? = when (summary) {
         summary.brightnessPercent != null -> stringResource(R.string.light_state_on_brightness, summary.brightnessPercent)
         else -> stringResource(R.string.light_state_on)
     }
+    is TileSummary.Alarm -> alarmStateText(summary.state)
 }
 
 /** The compact visual under the state line (e.g. a light's brightness bar), or nothing. */
 @Composable
 fun TileSummaryVisual(summary: TileSummary, modifier: Modifier = Modifier) {
     when (summary) {
-        TileSummary.Default -> Unit
+        TileSummary.Default, is TileSummary.Alarm -> Unit
         is TileSummary.Light -> if (summary.isOn && summary.brightnessPercent != null) {
             LevelBar(fraction = summary.brightnessPercent / 100f, modifier = modifier)
         }
     }
+}
+
+/** The tile's own container/content colors (e.g. an alarm's state color), or null for the default on/off colors. */
+@Composable
+fun summaryTileColors(summary: TileSummary): TileColors? = when (summary) {
+    is TileSummary.Alarm -> alarmColors(summary.state.tone)
+    TileSummary.Default, is TileSummary.Light -> null
+}
+
+/** Drawn behind the tile's content: a pulse while an alarm is triggered, otherwise nothing (no animation). */
+@Composable
+fun TileSummaryBackground(summary: TileSummary, modifier: Modifier = Modifier) {
+    if (summary is TileSummary.Alarm && summary.state == AlarmPanelState.TRIGGERED) TriggeredPulse(modifier)
 }
 
 private val LevelBarShape = RoundedCornerShape(2.dp)

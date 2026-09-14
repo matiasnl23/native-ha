@@ -1,5 +1,7 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
+import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+
 /**
  * A tile's domain-specific summary, derived once per entity state change by
  * [DomainTileBehavior.summarize]. Rendered by [summaryStateText] and [TileSummaryVisual].
@@ -10,4 +12,7 @@ sealed interface TileSummary {
 
     /** [brightnessPercent] is null when the light is off or doesn't support brightness. */
     data class Light(val isOn: Boolean, val brightnessPercent: Int?) : TileSummary
+
+    /** An alarm control panel: its state picks the tile's text and color. */
+    data class Alarm(val state: AlarmPanelState) : TileSummary
 }

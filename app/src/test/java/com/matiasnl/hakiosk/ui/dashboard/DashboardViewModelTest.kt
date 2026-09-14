@@ -363,6 +363,36 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `tapping an alarm tile opens its panel and never arms or disarms, whatever its stored preference`() = runTest {
+        val repository = FakeHaRepository(
+            initialEntities = listOf(
+                testEntity("alarm_control_panel.home", "armed_away", """{"friendly_name":"Alarma","supported_features":3}"""),
+            ),
+        )
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "view-1",
+                    name = "Principal",
+                    tiles = listOf(
+                        DashboardTile("t", TileContent.Entity("alarm_control_panel.home", tapAction = TileTapAction.TOGGLE)),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layout))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val tile = viewModel.uiState.value.entityTiles().single()
+
+        assertEquals(TileSummary.Alarm(com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState.ARMED_AWAY), tile.summary)
+        assertTrue(tile.isActionable)
+        viewModel.onTileClick(tile)
+
+        assertEquals(TileDetailsRequest("t", "alarm_control_panel.home", "Alarma", "alarm_control_panel"), viewModel.detailsRequest.value)
+        assertEquals("armed_away", repository.entities.value.getValue("alarm_control_panel.home").state)
+    }
+
+    @Test
     fun `failed service call emits an error event with the tile label and repository message`() = runTest {
         val repository = FailingHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen", label = "Cocina"))

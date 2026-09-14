@@ -1,6 +1,7 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -59,6 +60,21 @@ class DomainTileBehaviorsTest {
         assertEquals(
             TileSummary.Light(isOn = false, brightnessPercent = null),
             light.summarize(testEntity("light.a", "off", """{"supported_color_modes":["brightness"]}""")),
+        )
+    }
+
+    @Test
+    fun `alarm panels always open their panel on tap and never offer a tap choice`() {
+        val alarm = DomainTileBehaviors.forDomain("alarm_control_panel")
+
+        assertNotNull(alarm.details)
+        assertFalse(alarm.offersTapActionChoice)
+        TileTapAction.entries.forEach { preference ->
+            assertEquals(preference.name, TileAction.OPEN_DETAILS, alarm.resolveTap(preference))
+        }
+        assertEquals(
+            TileSummary.Alarm(AlarmPanelState.TRIGGERED),
+            alarm.summarize(testEntity("alarm_control_panel.home", "triggered", """{"supported_features":3}""")),
         )
     }
 

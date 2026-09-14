@@ -2,6 +2,7 @@ package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.AlarmTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.LightTileBehavior
 
 /** What a tap on an entity tile does, once the domain and the tile's own preference are resolved. */
@@ -92,6 +93,7 @@ object DomainTileBehaviors {
         "scene" to TurnOnTileBehavior,
         "script" to TurnOnTileBehavior,
         CAMERA_DOMAIN to CameraTileBehavior,
+        "alarm_control_panel" to AlarmTileBehavior,
     )
 
     fun forDomain(domain: String): DomainTileBehavior = byDomain[domain] ?: DefaultTileBehavior

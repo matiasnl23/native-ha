@@ -77,7 +77,11 @@ import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsHost
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryVisual
+import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryTileColors
+import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import androidx.compose.material3.CardColors
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryStateText
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
@@ -706,13 +710,23 @@ private fun DashboardTileCard(
         modifier = modifier
             .fillMaxSize()
             .then(gestures),
-        colors = CardDefaults.cardColors(
-            containerColor = tileContainerColor(dimmed, tile.isOn),
-            contentColor = tileContentColor(dimmed, tile.isOn),
-        ),
+        colors = entityTileColors(tile, dimmed),
     ) {
-        DashboardTileContent(tile, placement)
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (!dimmed) TileSummaryBackground(tile.summary, Modifier.matchParentSize())
+            DashboardTileContent(tile, placement)
+        }
     }
+}
+
+/** A summary's own colors (e.g. an alarm's state color) when the tile is live, else the on/off colors. */
+@Composable
+private fun entityTileColors(tile: DashboardTileUiState, dimmed: Boolean): CardColors {
+    val summaryColors = if (dimmed) null else summaryTileColors(tile.summary)
+    return CardDefaults.cardColors(
+        containerColor = summaryColors?.container ?: tileContainerColor(dimmed, tile.isOn),
+        contentColor = summaryColors?.content ?: tileContentColor(dimmed, tile.isOn),
+    )
 }
 
 @Composable
@@ -885,10 +899,11 @@ private fun EditModeTileCell(
                     CameraTileContent(tile, placement, isVisible, cameraThumbnail)
                 }
             } else {
+                val colors = entityTileColors(tile, dimmed)
                 EditableTileShell(
                     onClick = { onEditTile(tile.id) },
-                    containerColor = tileContainerColor(dimmed, tile.isOn),
-                    contentColor = tileContentColor(dimmed, tile.isOn),
+                    containerColor = colors.containerColor,
+                    contentColor = colors.contentColor,
                 ) {
                     DashboardTileContent(tile, placement)
                 }
@@ -1061,6 +1076,10 @@ private fun DashboardSmartTilesPreview() {
         previewEntity("light.lamp", "Lámpara", "on", isOn = true, summary = TileSummary.Light(true, null)),
         previewEntity("light.bedroom", "Dormitorio", "off", summary = TileSummary.Light(false, null)),
         previewEntity("switch.coffee_maker", "Cafetera", "off"),
+        previewEntity("alarm_control_panel.home", "Alarma", "disarmed", summary = TileSummary.Alarm(AlarmPanelState.DISARMED)),
+        previewEntity("alarm_control_panel.garage", "Garage", "armed_away", summary = TileSummary.Alarm(AlarmPanelState.ARMED_AWAY)),
+        previewEntity("alarm_control_panel.shed", "Galpón", "arming", summary = TileSummary.Alarm(AlarmPanelState.ARMING)),
+        previewEntity("alarm_control_panel.office", "Oficina", "triggered", summary = TileSummary.Alarm(AlarmPanelState.TRIGGERED)),
     )
     val grid = DashboardGridSettings(columns = 4, rows = 3)
     HAKioskTheme {

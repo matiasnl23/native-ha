@@ -72,6 +72,33 @@
     <string name="light_panel_kelvin">%1$d K</string>
     <string name="light_panel_degrees">%1$d°</string>
 
+    <!-- Alarm control panel -->
+    <string name="alarm_state_disarmed">Desarmada</string>
+    <string name="alarm_state_armed_home">Armada (casa)</string>
+    <string name="alarm_state_armed_away">Armada (ausente)</string>
+    <string name="alarm_state_armed_night">Armada (noche)</string>
+    <string name="alarm_state_armed_vacation">Armada (vacaciones)</string>
+    <string name="alarm_state_armed_custom_bypass">Armada (personalizada)</string>
+    <string name="alarm_state_pending">Pendiente</string>
+    <string name="alarm_state_arming">Armando…</string>
+    <string name="alarm_state_disarming">Desarmando…</string>
+    <string name="alarm_state_triggered">¡Disparada!</string>
+    <string name="alarm_state_unknown">Estado desconocido</string>
+    <string name="alarm_panel_arm">Armar</string>
+    <string name="alarm_mode_home">Casa</string>
+    <string name="alarm_mode_away">Ausente</string>
+    <string name="alarm_mode_night">Noche</string>
+    <string name="alarm_mode_vacation">Vacaciones</string>
+    <string name="alarm_mode_custom_bypass">Personalizada</string>
+    <string name="alarm_panel_disarm">Desarmar</string>
+    <string name="alarm_panel_code">Código</string>
+    <string name="alarm_panel_code_placeholder">Ingresá el código</string>
+    <string name="alarm_panel_code_entered">%1$d dígitos ingresados</string>
+    <string name="alarm_panel_keypad_clear">Borrar todo</string>
+    <string name="alarm_panel_keypad_delete">Borrar el último dígito</string>
+    <string name="alarm_panel_sending">Enviando…</string>
+    <string name="alarm_panel_no_actions">No hay acciones disponibles en este estado.</string>
+
     <!-- Edit tile modal -->
     <string name="edit_tile_label">Nombre para mostrar</string>
     <string name="edit_tile_size">Tamaño</string>
