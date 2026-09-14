@@ -1,6 +1,8 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.ui.dashboard.tiles.light.LightTileBehavior
 
 /** What a tap on an entity tile does, once the domain and the tile's own preference are resolved. */
 enum class TileAction {
@@ -49,6 +51,12 @@ interface DomainTileBehavior {
             TileTapAction.OPEN_DETAILS -> TileAction.OPEN_DETAILS
         }
     }
+
+    /**
+     * The tile's summary for [entity]. Called at most once per entity state change (the ViewModel
+     * caches it by entity instance), so parsing attributes here is fine.
+     */
+    fun summarize(entity: HaEntity): TileSummary = TileSummary.Default
 }
 
 /** Read-only tiles (sensors, binary sensors, anything unknown): taps are no-ops. */
@@ -76,7 +84,7 @@ object DomainTileBehaviors {
     const val CAMERA_DOMAIN = "camera"
 
     private val byDomain: Map<String, DomainTileBehavior> = mapOf(
-        "light" to ToggleTileBehavior,
+        "light" to LightTileBehavior,
         "switch" to ToggleTileBehavior,
         "fan" to ToggleTileBehavior,
         "input_boolean" to ToggleTileBehavior,

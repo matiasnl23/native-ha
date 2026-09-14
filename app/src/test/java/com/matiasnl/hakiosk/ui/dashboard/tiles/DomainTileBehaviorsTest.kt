@@ -3,6 +3,8 @@ package com.matiasnl.hakiosk.ui.dashboard.tiles
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DomainTileBehaviorsTest {
@@ -25,6 +27,45 @@ class DomainTileBehaviorsTest {
     @Test
     fun `cameras open the focus view`() {
         assertEquals(TileAction.OPEN_CAMERA, tapOf("camera"))
+    }
+
+    @Test
+    fun `lights toggle by default, open controls when the tile asks, and have a details panel`() {
+        val light = DomainTileBehaviors.forDomain("light")
+
+        assertNotNull(light.details)
+        assertTrue(light.offersTapActionChoice)
+        assertEquals(TileAction.TOGGLE, light.resolveTap(TileTapAction.DEFAULT))
+        assertEquals(TileAction.TOGGLE, light.resolveTap(TileTapAction.TOGGLE))
+        assertEquals(TileAction.OPEN_DETAILS, light.resolveTap(TileTapAction.OPEN_DETAILS))
+    }
+
+    @Test
+    fun `light summary shows brightness only when supported and on`() {
+        val light = DomainTileBehaviors.forDomain("light")
+
+        assertEquals(
+            TileSummary.Light(isOn = true, brightnessPercent = 60),
+            light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["brightness"],"brightness":153}""")),
+        )
+        assertEquals(
+            TileSummary.Light(isOn = true, brightnessPercent = 1),
+            light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["hs"],"brightness":1}""")),
+        )
+        assertEquals(
+            TileSummary.Light(isOn = true, brightnessPercent = null),
+            light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["onoff"],"brightness":153}""")),
+        )
+        assertEquals(
+            TileSummary.Light(isOn = false, brightnessPercent = null),
+            light.summarize(testEntity("light.a", "off", """{"supported_color_modes":["brightness"]}""")),
+        )
+    }
+
+    @Test
+    fun `other domains keep the default summary`() {
+        assertEquals(TileSummary.Default, DomainTileBehaviors.forDomain("switch").summarize(testEntity("switch.a", "on")))
+        assertEquals(TileSummary.Default, DomainTileBehaviors.forDomain("sensor").summarize(testEntity("sensor.a", "21")))
     }
 
     @Test

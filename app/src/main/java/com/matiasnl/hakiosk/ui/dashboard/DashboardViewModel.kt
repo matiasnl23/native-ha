@@ -23,7 +23,9 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.EntityControlSource
 import com.matiasnl.hakiosk.ui.dashboard.tiles.HaRepositoryControlSource
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileAction
@@ -93,6 +95,8 @@ data class DashboardTileUiState(
     val tapAction: TileTapAction = TileTapAction.DEFAULT,
     /** True when a long press (outside edit mode) opens a details panel: the domain has one and the entity exists. */
     val hasDetails: Boolean = false,
+    /** Domain-specific summary (e.g. a light's brightness); [TileSummary.Default] shows the raw state. */
+    val summary: TileSummary = TileSummary.Default,
 ) : DashboardTileUi
 
 /** Empty cells that separate groups of tiles. */
@@ -195,6 +199,9 @@ data class OpenCameraEvent(val entityId: String, val label: String)
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
 
+/** A tile summary and the entity instance it was derived from. */
+private class CachedSummary(val entity: HaEntity, val summary: TileSummary)
+
 /** The view the dashboard is on outside edit mode; [viewId] null = "whatever the first view is". */
 private data class ViewSelection(val viewId: String?)
 
@@ -268,6 +275,14 @@ class DashboardViewModel(
     /** Last emitted page per view id, reused when equal so unchanged pages keep their instance; only touched from [uiState]'s transform. */
     private val lastPages = HashMap<String, DashboardPageUi>()
 
+    /**
+     * Tile summaries by entity id, from the previous [uiState] build and the one in progress. A summary
+     * is recomputed only when its entity instance changed (the repository replaces only changed
+     * entities), and only for entities some tile shows. Only touched from [uiState]'s transform.
+     */
+    private var summaryCache = HashMap<String, CachedSummary>()
+    private var nextSummaryCache = HashMap<String, CachedSummary>()
+
     private val editController = DashboardEditController(dashboardLayoutStore, idProvider)
 
     /**
@@ -320,9 +335,11 @@ class DashboardViewModel(
         haRepository.connectionState,
         inactivityReturnMinutes,
     ) { structure, entities, connectionState, inactivityMinutes ->
+        val pages = structure.pages.map { page -> reuseIfEqual(page.toUi(structure.viewNames, entities)) }
+        rotateSummaryCache()
         DashboardUiState(
             isLoaded = structure.isLoaded,
-            pages = structure.pages.map { page -> reuseIfEqual(page.toUi(structure.viewNames, entities)) },
+            pages = pages,
             currentPage = structure.currentPage,
             connectionState = connectionState,
             hasEntities = entities.isNotEmpty(),
@@ -588,6 +605,22 @@ class DashboardViewModel(
         )
     }
 
+    private fun summaryFor(behavior: DomainTileBehavior, entity: HaEntity): TileSummary {
+        val id = entity.entityId
+        val cached = nextSummaryCache[id]?.takeIf { it.entity === entity }
+            ?: summaryCache[id]?.takeIf { it.entity === entity }
+            ?: CachedSummary(entity, behavior.summarize(entity))
+        nextSummaryCache[id] = cached
+        return cached.summary
+    }
+
+    /** Keeps this build's summaries for the next one and drops the rest (entities no tile shows anymore). */
+    private fun rotateSummaryCache() {
+        val previous = summaryCache
+        summaryCache = nextSummaryCache
+        nextSummaryCache = previous.also { it.clear() }
+    }
+
     /** Keeps the previous instance of an unchanged page, so the screen can skip recomposing it. */
     private fun reuseIfEqual(page: DashboardPageUi): DashboardPageUi {
         val previous = lastPages[page.viewId]
@@ -629,6 +662,7 @@ class DashboardViewModel(
             defaultLabel = fallbackLabel,
             tapAction = tapAction,
             hasDetails = entity != null && behavior.details != null,
+            summary = if (entity != null) summaryFor(behavior, entity) else TileSummary.Default,
         )
     }
 

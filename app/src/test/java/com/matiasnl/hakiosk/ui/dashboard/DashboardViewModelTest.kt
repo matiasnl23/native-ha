@@ -23,6 +23,10 @@ import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsRequest
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
+import com.matiasnl.hakiosk.ui.dashboard.tiles.testEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -253,6 +257,109 @@ class DashboardViewModelTest {
 
         assertEquals(null, viewModel.detailsRequest.value)
         assertEquals("off", repository.entities.value.getValue("switch.coffee").state)
+    }
+
+    // --- Smart tiles: summaries and details panels ---
+
+    @Test
+    fun `light tiles carry their summary and a details panel`() = runTest {
+        val repository = FakeHaRepository(
+            initialEntities = listOf(
+                testEntity("light.dim", "on", """{"friendly_name":"Dim","supported_color_modes":["brightness"],"brightness":153}"""),
+                testEntity("light.plain", "on", """{"supported_color_modes":["onoff"]}"""),
+                testEntity("light.off", "off", """{"supported_color_modes":["brightness"]}"""),
+            ),
+        )
+        val layoutStore = InMemoryDashboardLayoutStore(
+            layoutWithTiles("light.dim" to null, "light.plain" to null, "light.off" to null, "light.gone" to null),
+        )
+        val viewModel = DashboardViewModel(repository, layoutStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        val tiles = viewModel.uiState.value.entityTiles()
+        assertEquals(
+            listOf(TileSummary.Light(true, 60), TileSummary.Light(true, null), TileSummary.Light(false, null), TileSummary.Default),
+            tiles.map { it.summary },
+        )
+        assertEquals(listOf(true, true, true, false), tiles.map { it.hasDetails })
+    }
+
+    @Test
+    fun `an entity update recomputes only that entity's summary`() = runTest {
+        val repository = FakeHaRepository(
+            initialEntities = listOf(
+                testEntity("light.a", "on", """{"supported_color_modes":["brightness"],"brightness":255}"""),
+                testEntity("light.b", "on", """{"supported_color_modes":["brightness"],"brightness":128}"""),
+            ),
+        )
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layoutWithTiles("light.a" to null, "light.b" to null)))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val before = viewModel.uiState.value.entityTiles()
+
+        viewModel.onTileClick(before[0]) // Toggles light.a off; light.b's entity instance is untouched.
+
+        val after = viewModel.uiState.value.entityTiles()
+        assertEquals(TileSummary.Light(false, null), after[0].summary)
+        assertSame(before[1].summary, after[1].summary)
+    }
+
+    @Test
+    fun `long press on a light opens its details panel, and dismiss closes it`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val tile = viewModel.uiState.value.entityTiles().single()
+
+        viewModel.onTileLongPress(tile)
+
+        assertEquals(TileDetailsRequest(tile.id, "light.kitchen", "Kitchen", "light"), viewModel.detailsRequest.value)
+        viewModel.dismissDetails()
+        assertEquals(null, viewModel.detailsRequest.value)
+    }
+
+    @Test
+    fun `long press never opens details while editing, and entering edit mode closes an open panel`() = runTest {
+        val (viewModel, _) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onTileLongPress(viewModel.uiState.value.entityTiles().single())
+
+        viewModel.enterEditMode()
+        assertEquals(null, viewModel.detailsRequest.value)
+
+        viewModel.onTileLongPress(viewModel.uiState.value.entityTiles().single())
+        assertEquals(null, viewModel.detailsRequest.value)
+    }
+
+    @Test
+    fun `long press on a missing light opens nothing`() = runTest {
+        val viewModel = DashboardViewModel(FakeHaRepository(emptyList()), InMemoryDashboardLayoutStore(layoutWithTile("light.gone")))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onTileLongPress(viewModel.uiState.value.entityTiles().single())
+
+        assertEquals(null, viewModel.detailsRequest.value)
+    }
+
+    @Test
+    fun `a light tile set to open controls opens the panel on tap instead of toggling`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "view-1",
+                    name = "Principal",
+                    tiles = listOf(DashboardTile("t", TileContent.Entity("light.kitchen", tapAction = TileTapAction.OPEN_DETAILS))),
+                ),
+            ),
+        )
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layout))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val tile = viewModel.uiState.value.entityTiles().single()
+
+        assertTrue(tile.isActionable)
+        viewModel.onTileClick(tile)
+
+        assertEquals("t", viewModel.detailsRequest.value?.tileId)
+        assertEquals("off", repository.entities.value.getValue("light.kitchen").state)
     }
 
     @Test

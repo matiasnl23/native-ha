@@ -76,6 +76,9 @@ import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsHost
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryVisual
+import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryStateText
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 /** Renders the camera snapshot of [entityId]; polls only while [active]. */
@@ -714,11 +717,14 @@ private fun DashboardTileCard(
 
 @Composable
 private fun DashboardTileContent(tile: DashboardTileUiState, placement: GridPlacement) {
+    val dimmed = tile.isMissing || tile.isUnavailable
     val stateText = when {
         tile.isMissing -> stringResource(R.string.dashboard_state_missing)
         tile.isUnavailable -> stringResource(R.string.dashboard_state_unavailable)
-        tile.unitOfMeasurement != null -> "${tile.stateValue} ${tile.unitOfMeasurement}"
-        else -> tile.stateValue.orEmpty()
+        else -> summaryStateText(tile.summary) ?: when {
+            tile.unitOfMeasurement != null -> "${tile.stateValue} ${tile.unitOfMeasurement}"
+            else -> tile.stateValue.orEmpty()
+        }
     }
     Column(
         modifier = Modifier.fillMaxSize().padding(12.dp),
@@ -730,7 +736,10 @@ private fun DashboardTileContent(tile: DashboardTileUiState, placement: GridPlac
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(text = stateText, style = stateStyle(placement), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column {
+            Text(text = stateText, style = stateStyle(placement), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!dimmed) TileSummaryVisual(tile.summary, Modifier.padding(top = 6.dp))
+        }
     }
 }
 
@@ -974,7 +983,10 @@ private fun previewEntity(
     isMissing: Boolean = false,
     colSpan: Int = 1,
     rowSpan: Int = 1,
+    summary: TileSummary = TileSummary.Default,
 ) = DashboardTileUiState(
+    summary = summary,
+    hasDetails = summary != TileSummary.Default,
     id = id,
     entityId = id,
     label = label,
@@ -1009,6 +1021,46 @@ private fun DashboardPreview() {
         previewEntity("camera.front_door", "Front door", "idle", colSpan = 2),
         ViewLinkTileUiState("link", targetViewId = "v2", label = "Planta alta"),
         previewEntity("light.gone", "Removed bulb", null, isMissing = true),
+    )
+    val grid = DashboardGridSettings(columns = 4, rows = 3)
+    HAKioskTheme {
+        DashboardContent(
+            uiState = DashboardUiState(
+                isLoaded = true,
+                pages = listOf(previewPage("main", "Principal", grid, tiles)),
+                connectionState = HaConnectionState.Connected,
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onTileClick = {},
+            onTileLongPress = {},
+            onPageSettled = {},
+            onViewLinkClick = {},
+            onOpenSettings = {},
+            onEnterEdit = {},
+            onRequestCancelEdit = {},
+            onDoneEdit = {},
+            onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
+            onEditTile = {},
+            onAddTile = {},
+            onOpenGridSettings = {},
+            onOpenViews = {},
+            onUserActivity = {},
+            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 900, heightDp = 600)
+@Composable
+private fun DashboardSmartTilesPreview() {
+    val tiles = listOf(
+        previewEntity("light.living", "Living", "on", isOn = true, colSpan = 2, rowSpan = 2, summary = TileSummary.Light(true, 60)),
+        previewEntity("light.hall", "Pasillo", "on", isOn = true, summary = TileSummary.Light(true, 15)),
+        previewEntity("light.lamp", "Lámpara", "on", isOn = true, summary = TileSummary.Light(true, null)),
+        previewEntity("light.bedroom", "Dormitorio", "off", summary = TileSummary.Light(false, null)),
+        previewEntity("switch.coffee_maker", "Cafetera", "off"),
     )
     val grid = DashboardGridSettings(columns = 4, rows = 3)
     HAKioskTheme {

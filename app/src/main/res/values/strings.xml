@@ -57,6 +57,20 @@
 
     <!-- Tile details panels -->
     <string name="tile_panel_close">Cerrar</string>
+    <string name="tile_panel_error">No se pudo aplicar: %1$s</string>
+
+    <!-- Lights -->
+    <string name="light_state_on">Encendida</string>
+    <string name="light_state_off">Apagada</string>
+    <string name="light_state_on_brightness">Encendida · %1$d%%</string>
+    <string name="light_panel_brightness">Brillo</string>
+    <string name="light_panel_color_temp">Temperatura de color</string>
+    <string name="light_panel_color">Color</string>
+    <string name="light_panel_hue">Tono</string>
+    <string name="light_panel_saturation">Saturación</string>
+    <string name="light_panel_percent">%1$d%%</string>
+    <string name="light_panel_kelvin">%1$d K</string>
+    <string name="light_panel_degrees">%1$d°</string>
 
     <!-- Edit tile modal -->
     <string name="edit_tile_label">Nombre para mostrar</string>
