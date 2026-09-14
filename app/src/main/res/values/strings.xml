@@ -55,6 +55,9 @@
     <string name="connection_auth_failed_action">Configurar</string>
     <string name="connection_disconnected">Desconectado: %1$s. Reintentando…</string>
 
+    <!-- Tile details panels -->
+    <string name="tile_panel_close">Cerrar</string>
+
     <!-- Edit tile modal -->
     <string name="edit_tile_label">Nombre para mostrar</string>
     <string name="edit_tile_size">Tamaño</string>

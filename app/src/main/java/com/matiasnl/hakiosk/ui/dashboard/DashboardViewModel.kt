@@ -22,8 +22,13 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.EntityControlSource
+import com.matiasnl.hakiosk.ui.dashboard.tiles.HaRepositoryControlSource
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileAction
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsRequest
+import kotlinx.coroutines.flow.asStateFlow
 import com.matiasnl.hakiosk.ui.picker.EntityPickerState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
@@ -54,7 +59,7 @@ private const val PERSIST_ECHO_TIMEOUT_MILLIS = 2_000L
 private fun serviceFor(action: TileAction): String? = when (action) {
     TileAction.TOGGLE -> "toggle"
     TileAction.TURN_ON -> "turn_on"
-    TileAction.NONE, TileAction.OPEN_CAMERA -> null
+    TileAction.NONE, TileAction.OPEN_CAMERA, TileAction.OPEN_DETAILS -> null
 }
 
 /** One cell-occupying item of the dashboard grid, in the view's tile order. Spans are as stored (unclipped). */
@@ -84,6 +89,10 @@ data class DashboardTileUiState(
     val rawLabel: String? = null,
     /** [label] without any override applied: the entity's friendly name, or the raw entity id. Edit-mode only. */
     val defaultLabel: String = label,
+    /** The tile's stored tap preference. */
+    val tapAction: TileTapAction = TileTapAction.DEFAULT,
+    /** True when a long press (outside edit mode) opens a details panel: the domain has one and the entity exists. */
+    val hasDetails: Boolean = false,
 ) : DashboardTileUi
 
 /** Empty cells that separate groups of tiles. */
@@ -242,6 +251,14 @@ class DashboardViewModel(
     /** Emits when a camera tile was tapped, for the screen to navigate to the camera view. */
     val openCameraEvents: SharedFlow<OpenCameraEvent> = _openCameraEvents.asSharedFlow()
 
+    private val _detailsRequest = MutableStateFlow<TileDetailsRequest?>(null)
+
+    /** The tile whose details panel is open, or null. Only ever set outside edit mode. */
+    val detailsRequest: StateFlow<TileDetailsRequest?> = _detailsRequest.asStateFlow()
+
+    /** What details panels read and call; they subscribe to their one entity only while open. */
+    val entityControls: EntityControlSource = HaRepositoryControlSource(haRepository)
+
     /** Only used from the sequential structure flow below. */
     private val packer = GridPacker()
 
@@ -361,6 +378,7 @@ class DashboardViewModel(
         if (editController.state.value.isEditing) return
         val layout = layoutState.value ?: return
         val viewId = resolveViewId(layout, selection.value?.viewId) ?: return
+        _detailsRequest.value = null
         editController.enter(layout, viewId)
     }
 
@@ -439,9 +457,13 @@ class DashboardViewModel(
 
     fun onTileClick(tile: DashboardTileUiState) {
         if (uiState.value.isEditing) return
-        val action = DomainTileBehaviors.forDomain(tile.domain).tapAction
+        val action = DomainTileBehaviors.forDomain(tile.domain).resolveTap(tile.tapAction)
         if (action == TileAction.OPEN_CAMERA) {
             if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label))
+            return
+        }
+        if (action == TileAction.OPEN_DETAILS) {
+            openDetails(tile)
             return
         }
         val service = serviceFor(action) ?: return
@@ -453,6 +475,25 @@ class DashboardViewModel(
                 _errorEvents.tryEmit(DashboardActionError(tile.label, message))
             }
         }
+    }
+
+    /**
+     * A long press on an entity tile outside edit mode: opens its details panel if its domain has one.
+     * In edit mode a long press drags the tile instead (handled by the grid), so this is a no-op then.
+     */
+    fun onTileLongPress(tile: DashboardTileUiState) {
+        if (editController.state.value.isEditing) return
+        openDetails(tile)
+    }
+
+    /** Closes the open details panel, if any. */
+    fun dismissDetails() {
+        _detailsRequest.value = null
+    }
+
+    private fun openDetails(tile: DashboardTileUiState) {
+        if (!tile.hasDetails || tile.isMissing) return
+        _detailsRequest.value = TileDetailsRequest(tile.id, tile.entityId, tile.label, tile.domain)
     }
 
     /**
@@ -477,6 +518,8 @@ class DashboardViewModel(
 
     private fun returnToFirstView() {
         if (editController.state.value.isEditing) return
+        // An unattended kiosk shouldn't keep a panel (possibly an alarm keypad) open.
+        _detailsRequest.value = null
         val layout = layoutState.value ?: return
         val firstViewId = layout.views.firstOrNull()?.id ?: return
         if (resolveViewId(layout, selection.value?.viewId) != firstViewId) select(firstViewId)
@@ -562,7 +605,8 @@ class DashboardViewModel(
         val entity = entities[entityId]
         val domain = entityId.substringBefore('.')
         val fallbackLabel = entity?.friendlyName ?: entityId
-        val action = DomainTileBehaviors.forDomain(domain).tapAction
+        val behavior = DomainTileBehaviors.forDomain(domain)
+        val action = behavior.resolveTap(tapAction)
         return DashboardTileUiState(
             id = id,
             entityId = entityId,
@@ -573,12 +617,18 @@ class DashboardViewModel(
             isOn = entity?.state == "on",
             isUnavailable = entity?.isUnavailable == true,
             isMissing = entity == null,
-            isActionable = entity != null &&
-                (serviceFor(action) != null || (action == TileAction.OPEN_CAMERA && !entity.isUnavailable)),
+            isActionable = entity != null && when (action) {
+                TileAction.TOGGLE, TileAction.TURN_ON -> true
+                TileAction.OPEN_CAMERA -> !entity.isUnavailable
+                TileAction.OPEN_DETAILS -> behavior.details != null
+                TileAction.NONE -> false
+            },
             colSpan = colSpan,
             rowSpan = rowSpan,
             rawLabel = label,
             defaultLabel = fallbackLabel,
+            tapAction = tapAction,
+            hasDetails = entity != null && behavior.details != null,
         )
     }
 

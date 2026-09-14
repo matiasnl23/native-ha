@@ -238,6 +238,24 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `long press on a domain without a details panel opens nothing`() = runTest {
+        val repository = FakeHaRepository(
+            initialEntities = listOf(entity("switch.coffee", "off", "Coffee"), entity("sensor.temp", "18", "Temp")),
+        )
+        val layoutStore = InMemoryDashboardLayoutStore(layoutWithTiles("switch.coffee" to null, "sensor.temp" to null))
+        val viewModel = DashboardViewModel(repository, layoutStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.uiState.value.entityTiles().forEach { tile ->
+            assertFalse(tile.hasDetails)
+            viewModel.onTileLongPress(tile)
+        }
+
+        assertEquals(null, viewModel.detailsRequest.value)
+        assertEquals("off", repository.entities.value.getValue("switch.coffee").state)
+    }
+
+    @Test
     fun `failed service call emits an error event with the tile label and repository message`() = runTest {
         val repository = FailingHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen", label = "Cocina"))

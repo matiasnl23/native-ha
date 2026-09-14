@@ -6,6 +6,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -74,6 +75,7 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.ViewsModal
 import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsHost
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 /** Renders the camera snapshot of [entityId]; polls only while [active]. */
@@ -96,6 +98,7 @@ fun DashboardScreen(
     var showGridSettings by remember { mutableStateOf(false) }
     var showViews by remember { mutableStateOf(false) }
     val addTilePickerState by viewModel.addTilePicker.uiState.collectAsStateWithLifecycle()
+    val detailsRequest by viewModel.detailsRequest.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
         viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label) }
@@ -129,6 +132,7 @@ fun DashboardScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onTileClick = viewModel::onTileClick,
+        onTileLongPress = viewModel::onTileLongPress,
         onPageSettled = viewModel::onPageSettled,
         onViewLinkClick = viewModel::onViewLinkClick,
         onSelectEditingView = viewModel::selectEditingView,
@@ -148,6 +152,15 @@ fun DashboardScreen(
         onUserActivity = viewModel::onUserActivity,
         cameraThumbnail = cameraThumbnail,
     )
+
+    detailsRequest?.let { request ->
+        TileDetailsHost(
+            request = request,
+            source = viewModel.entityControls,
+            onUserActivity = viewModel::onUserActivity,
+            onDismiss = viewModel::dismissDetails,
+        )
+    }
 
     if (showViews) {
         ViewsModal(
@@ -289,6 +302,7 @@ private fun DashboardContent(
     uiState: DashboardUiState,
     snackbarHostState: SnackbarHostState,
     onTileClick: (DashboardTileUiState) -> Unit,
+    onTileLongPress: (DashboardTileUiState) -> Unit,
     onPageSettled: (viewId: String) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onSelectEditingView: (viewId: String) -> Unit,
@@ -387,6 +401,7 @@ private fun DashboardContent(
                     isSettled = isSettled,
                     scrollState = scrollStates.getOrPut(page.viewId) { ScrollState(0) },
                     onTileClick = onTileClick,
+                    onTileLongPress = onTileLongPress,
                     onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
                     onMoveTile = onMoveTile,
@@ -450,6 +465,7 @@ private fun DashboardPage(
     isSettled: State<Boolean>,
     scrollState: ScrollState,
     onTileClick: (DashboardTileUiState) -> Unit,
+    onTileLongPress: (DashboardTileUiState) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
@@ -497,7 +513,12 @@ private fun DashboardPage(
                         thumbnail = cameraThumbnail,
                     )
                 } else {
-                    DashboardTileCard(tile = tile, placement = placement, onClick = { onTileClick(tile) })
+                    DashboardTileCard(
+                        tile = tile,
+                        placement = placement,
+                        onClick = { onTileClick(tile) },
+                        onLongClick = { onTileLongPress(tile) },
+                    )
                 }
                 is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
                 is ViewLinkTileUiState -> ViewLinkTileCard(
@@ -655,18 +676,33 @@ private fun tileContentColor(dimmed: Boolean, isOn: Boolean): Color = when {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
+/**
+ * Entity tile outside edit mode. A tap runs [onClick] when actionable; a long press runs [onLongClick]
+ * when the tile has a details panel. Drag-to-reorder only exists in edit mode (on the grid, not here),
+ * so the long press never competes with it; the pager and vertical scroll consume a moving pointer
+ * before the long-press timeout, which cancels the press as with any clickable.
+ */
 @Composable
 private fun DashboardTileCard(
     tile: DashboardTileUiState,
     placement: GridPlacement,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dimmed = tile.isMissing || tile.isUnavailable
+    val gestures = when {
+        tile.hasDetails -> Modifier.combinedClickable(
+            onClick = { if (tile.isActionable) onClick() },
+            onLongClick = onLongClick,
+        )
+        tile.isActionable -> Modifier.clickable(onClick = onClick)
+        else -> Modifier
+    }
     Card(
         modifier = modifier
             .fillMaxSize()
-            .then(if (tile.isActionable) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(gestures),
         colors = CardDefaults.cardColors(
             containerColor = tileContainerColor(dimmed, tile.isOn),
             contentColor = tileContentColor(dimmed, tile.isOn),
@@ -984,6 +1020,7 @@ private fun DashboardPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onTileLongPress = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1032,6 +1069,7 @@ private fun DashboardMultiViewPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onTileLongPress = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1063,6 +1101,7 @@ private fun DashboardEmptyPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onTileLongPress = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1106,6 +1145,7 @@ private fun DashboardEditModePreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
+            onTileLongPress = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},

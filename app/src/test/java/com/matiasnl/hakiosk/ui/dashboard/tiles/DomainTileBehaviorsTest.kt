@@ -1,6 +1,8 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DomainTileBehaviorsTest {
@@ -23,6 +25,18 @@ class DomainTileBehaviorsTest {
     @Test
     fun `cameras open the focus view`() {
         assertEquals(TileAction.OPEN_CAMERA, tapOf("camera"))
+    }
+
+    @Test
+    fun `domains without a details panel ignore the tile's tap preference`() {
+        listOf("switch", "scene", "camera", "sensor").forEach { domain ->
+            val behavior = DomainTileBehaviors.forDomain(domain)
+            assertEquals(domain, null, behavior.details)
+            assertFalse(domain, behavior.offersTapActionChoice)
+            TileTapAction.entries.forEach { preference ->
+                assertEquals(domain, behavior.tapAction, behavior.resolveTap(preference))
+            }
+        }
     }
 
     @Test

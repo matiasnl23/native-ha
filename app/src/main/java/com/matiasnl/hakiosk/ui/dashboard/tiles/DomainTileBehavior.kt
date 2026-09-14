@@ -1,5 +1,7 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
+import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+
 /** What a tap on an entity tile does, once the domain and the tile's own preference are resolved. */
 enum class TileAction {
     /** Display-only tile: the tap does nothing. */
@@ -13,17 +15,40 @@ enum class TileAction {
 
     /** Opens the full-screen camera view. */
     OPEN_CAMERA,
+
+    /** Opens the domain's details panel ([DomainTileBehavior.details]). */
+    OPEN_DETAILS,
 }
 
 /**
- * How one Home Assistant domain behaves on the dashboard: what a tap does. Pure Kotlin so the
- * mapping is unit-testable; every domain without an entry uses [DefaultTileBehavior].
+ * How one Home Assistant domain behaves on the dashboard. Every domain without an entry in
+ * [DomainTileBehaviors] uses [DefaultTileBehavior].
  *
- * Adding a domain is one entry in [DomainTileBehaviors]: e.g. `"cover" to ToggleTileBehavior`.
+ * - [tapAction]: what a tap does by default.
+ * - [details]: the panel a long press (outside edit mode) opens, or null if the domain has none.
+ * - [offersTapActionChoice]: whether the edit modal lets the user pick between toggling and opening
+ *   the panel on tap (derived: the domain toggles and has a panel).
+ *
+ * Adding a domain is one entry in [DomainTileBehaviors], e.g. `"cover" to ToggleTileBehavior`, or an
+ * object overriding [details] for a domain with its own panel.
  */
 interface DomainTileBehavior {
-    /** The action a tap runs. */
+    /** The domain's default tap action. */
     val tapAction: TileAction
+
+    /** The details panel, or null if the domain has none. */
+    val details: TileDetails? get() = null
+
+    val offersTapActionChoice: Boolean get() = details != null && tapAction == TileAction.TOGGLE
+
+    /** The tap action for a tile with [preference]; the preference only matters when [offersTapActionChoice]. */
+    fun resolveTap(preference: TileTapAction): TileAction {
+        if (!offersTapActionChoice) return tapAction
+        return when (preference) {
+            TileTapAction.DEFAULT, TileTapAction.TOGGLE -> TileAction.TOGGLE
+            TileTapAction.OPEN_DETAILS -> TileAction.OPEN_DETAILS
+        }
+    }
 }
 
 /** Read-only tiles (sensors, binary sensors, anything unknown): taps are no-ops. */
