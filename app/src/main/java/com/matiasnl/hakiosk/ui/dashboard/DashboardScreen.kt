@@ -121,6 +121,7 @@ fun DashboardScreen(
         snackbarHostState = snackbarHostState,
         onTileClick = viewModel::onTileClick,
         onPageSettled = viewModel::onPageSettled,
+        onViewLinkClick = viewModel::onViewLinkClick,
         onOpenSettings = onOpenSettings,
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
@@ -261,6 +262,7 @@ private fun DashboardContent(
     snackbarHostState: SnackbarHostState,
     onTileClick: (DashboardTileUiState) -> Unit,
     onPageSettled: (viewId: String) -> Unit,
+    onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onOpenSettings: () -> Unit,
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
@@ -334,6 +336,7 @@ private fun DashboardContent(
                     isSettled = isSettled,
                     scrollState = scrollStates.getOrPut(page.viewId) { ScrollState(0) },
                     onTileClick = onTileClick,
+                    onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
                     onMoveTile = onMoveTile,
                     onEditTile = onEditTile,
@@ -395,6 +398,7 @@ private fun DashboardPage(
     isSettled: State<Boolean>,
     scrollState: ScrollState,
     onTileClick: (DashboardTileUiState) -> Unit,
+    onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
     onEditTile: (tileId: String) -> Unit,
@@ -442,7 +446,11 @@ private fun DashboardPage(
                     DashboardTileCard(tile = tile, placement = placement, onClick = { onTileClick(tile) })
                 }
                 is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
-                is ViewLinkTileUiState -> ViewLinkTileCard(tile = tile, placement = placement)
+                is ViewLinkTileUiState -> ViewLinkTileCard(
+                    tile = tile,
+                    placement = placement,
+                    onClick = { onViewLinkClick(tile) },
+                )
                 is AddTileUiState -> Box(Modifier) // Never appears outside edit mode.
             }
         }
@@ -674,15 +682,19 @@ private fun CameraTileContent(
     }
 }
 
-/** Link to another view. Not interactive yet outside edit mode (view navigation arrives with multiple views). */
+/** Link to another view: a tap goes to its page. A link whose target view is gone looks disabled and ignores taps. */
 @Composable
 private fun ViewLinkTileCard(
     tile: ViewLinkTileUiState,
     placement: GridPlacement,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .alpha(if (tile.hasTarget) 1f else 0.5f)
+            .then(if (tile.hasTarget) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -704,7 +716,14 @@ private fun ViewLinkTileContent(tile: ViewLinkTileUiState, placement: GridPlacem
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(text = stringResource(R.string.dashboard_view_link_hint), style = stateStyle(placement))
+        Text(
+            text = stringResource(
+                if (tile.hasTarget) R.string.dashboard_view_link_hint else R.string.dashboard_view_link_missing,
+            ),
+            style = stateStyle(placement),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -884,6 +903,7 @@ private fun DashboardPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onPageSettled = {},
+            onViewLinkClick = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -927,6 +947,7 @@ private fun DashboardMultiViewPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onPageSettled = {},
+            onViewLinkClick = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -953,6 +974,7 @@ private fun DashboardEmptyPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onPageSettled = {},
+            onViewLinkClick = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},
@@ -991,6 +1013,7 @@ private fun DashboardEditModePreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onPageSettled = {},
+            onViewLinkClick = {},
             onOpenSettings = {},
             onEnterEdit = {},
             onRequestCancelEdit = {},

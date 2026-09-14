@@ -405,6 +405,18 @@ class DashboardViewModel(
         }
     }
 
+    /**
+     * A "link to view" tile was tapped: makes its target the current view, which the screen animates
+     * the pager to. No-op while editing (a tap then opens the tile's edit modal) and when the target
+     * view doesn't exist.
+     */
+    fun onViewLinkClick(tile: ViewLinkTileUiState) {
+        if (editController.state.value.isEditing) return
+        val layout = layoutState.value ?: return
+        if (layout.views.none { it.id == tile.targetViewId }) return
+        select(tile.targetViewId)
+    }
+
     private fun select(viewId: String) {
         selection.value = ViewSelection(viewId)
         lastViewSaveRequests.tryEmit(viewId)

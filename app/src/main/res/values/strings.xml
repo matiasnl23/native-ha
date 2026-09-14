@@ -35,6 +35,7 @@
     <string name="dashboard_state_missing">Entidad no encontrada</string>
     <string name="dashboard_view_link_fallback">Vista</string>
     <string name="dashboard_view_link_hint">Ir a la vista</string>
+    <string name="dashboard_view_link_missing">Vista no encontrada</string>
     <string name="dashboard_page_indicator">Vista %1$d de %2$d</string>
     <string name="dashboard_edit_mode">Editar</string>
     <string name="dashboard_edit_mode_title">Editando el dashboard</string>

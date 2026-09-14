@@ -667,6 +667,46 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `tapping a view link makes its target the current page and persists it`() = runTest {
+        val (viewModel, _, preferences) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val link = viewModel.uiState.value.pages[0].tiles.filterIsInstance<ViewLinkTileUiState>().single()
+        assertTrue(link.hasTarget)
+
+        viewModel.onViewLinkClick(link)
+
+        assertEquals(1, viewModel.uiState.value.currentPage)
+        advanceTimeBy(LAST_VIEW_SAVE_DEBOUNCE_MILLIS + 1)
+        assertEquals("v2", preferences.preferences.value.lastViewId)
+    }
+
+    @Test
+    fun `tapping a link to a missing view is a no-op`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.onPageSettled("v2")
+        val stale = viewModel.uiState.value.pages[1].tiles.filterIsInstance<ViewLinkTileUiState>().single()
+        assertFalse(stale.hasTarget)
+
+        viewModel.onViewLinkClick(stale)
+
+        assertEquals(1, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `tapping a view link while editing does not navigate`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        val link = viewModel.uiState.value.pages[0].tiles.filterIsInstance<ViewLinkTileUiState>().single()
+
+        viewModel.onViewLinkClick(link)
+
+        assertEquals(0, viewModel.uiState.value.currentPage)
+        assertEquals("v1", viewModel.uiState.value.viewId)
+    }
+
+    @Test
     fun `edit mode targets the current view and page settles are ignored while editing`() = runTest {
         val (viewModel, _, _) = multiViewModel()
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
