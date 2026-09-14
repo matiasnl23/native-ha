@@ -91,8 +91,13 @@ fun HaKioskNavGraph(
                             // launchSingleTop: a double tap must not stack two camera screens.
                             navController.navigate(CameraRoute(entityId, label)) { launchSingleTop = true }
                         },
-                        cameraThumbnail = { entityId, modifier ->
-                            CameraThumbnail(entityId = entityId, snapshots = cameraModule.snapshots, modifier = modifier)
+                        cameraThumbnail = { entityId, active, modifier ->
+                            CameraThumbnail(
+                                entityId = entityId,
+                                snapshots = cameraModule.snapshots,
+                                modifier = modifier,
+                                active = active,
+                            )
                         },
                     )
                 }

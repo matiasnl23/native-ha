@@ -1,7 +1,12 @@
 package com.matiasnl.hakiosk.ui.dashboard
 
+import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
+import com.matiasnl.hakiosk.data.dashboard.DashboardTile
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
+import com.matiasnl.hakiosk.data.dashboard.setGrid
+import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
+import org.junit.Assert.assertSame
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.dashboard.newDashboardTile
@@ -95,7 +100,7 @@ class DashboardViewModelTest {
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
-        val tiles = viewModel.uiState.value.tiles
+        val tiles = viewModel.uiState.value.entityTiles()
         assertEquals(listOf("sensor.temp", "light.kitchen"), tiles.map { it.entityId })
         assertEquals("Temp", tiles[0].label)
         assertEquals("Cocina", tiles[1].label)
@@ -108,7 +113,7 @@ class DashboardViewModelTest {
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
-        val tile = viewModel.uiState.value.tiles.single()
+        val tile = viewModel.uiState.value.entityTiles().single()
         assertTrue(tile.isMissing)
         assertFalse(tile.isActionable)
         assertEquals("light.gone", tile.label)
@@ -121,7 +126,7 @@ class DashboardViewModelTest {
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
 
-        viewModel.onTileClick(viewModel.uiState.value.tiles.single())
+        viewModel.onTileClick(viewModel.uiState.value.entityTiles().single())
 
         assertEquals("on", repository.entities.value.getValue("light.kitchen").state)
     }
@@ -132,7 +137,7 @@ class DashboardViewModelTest {
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("sensor.temp"))
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
-        val tile = viewModel.uiState.value.tiles.single()
+        val tile = viewModel.uiState.value.entityTiles().single()
 
         assertFalse(tile.isActionable)
         viewModel.onTileClick(tile)
@@ -148,7 +153,7 @@ class DashboardViewModelTest {
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val opened = mutableListOf<OpenCameraEvent>()
         backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
-        val tile = viewModel.uiState.value.tiles.single()
+        val tile = viewModel.uiState.value.entityTiles().single()
 
         assertTrue(tile.isActionable)
         viewModel.onTileClick(tile)
@@ -170,7 +175,7 @@ class DashboardViewModelTest {
         val opened = mutableListOf<OpenCameraEvent>()
         backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
 
-        val tiles = viewModel.uiState.value.tiles
+        val tiles = viewModel.uiState.value.entityTiles()
         assertFalse(tiles.any { it.isActionable })
         tiles.forEach(viewModel::onTileClick)
 
@@ -183,7 +188,7 @@ class DashboardViewModelTest {
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("scene.movie_night"))
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
-        val tile = viewModel.uiState.value.tiles.single()
+        val tile = viewModel.uiState.value.entityTiles().single()
 
         assertTrue(tile.isActionable)
         viewModel.onTileClick(tile)
@@ -197,7 +202,7 @@ class DashboardViewModelTest {
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen", label = "Cocina"))
         val viewModel = DashboardViewModel(repository, layoutStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
-        val tile = viewModel.uiState.value.tiles.single()
+        val tile = viewModel.uiState.value.entityTiles().single()
 
         var emitted: DashboardActionError? = null
         backgroundScope.launch(Dispatchers.Main) {
@@ -223,4 +228,107 @@ class DashboardViewModelTest {
         assertEquals(com.matiasnl.hakiosk.data.ha.HaConnectionState.Idle, viewModel.uiState.value.connectionState)
         assertTrue(viewModel.uiState.value.hasEntities)
     }
+
+    @Test
+    fun `exposes the first view's grid and all its tiles in order with spans and packing`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
+        val layoutStore = InMemoryDashboardLayoutStore(mixedLayout())
+        val viewModel = DashboardViewModel(repository, layoutStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        val state = viewModel.uiState.value
+        assertEquals("view-1", state.viewId)
+        assertEquals(DashboardGrid(columns = 3, rows = 2), state.grid)
+        assertEquals(listOf("t-light", "t-spacer", "t-link", "t-missing-link"), state.tiles.map { it.id })
+        assertEquals(listOf(2 to 2, 1 to 1, 1 to 1, 5 to 1), state.tiles.map { it.colSpan to it.rowSpan })
+
+        val light = state.tiles[0] as DashboardTileUiState
+        assertEquals("Kitchen", light.label)
+        assertTrue(light.isActionable)
+        assertTrue(state.tiles[1] is SpacerTileUiState)
+        assertEquals(ViewLinkTileUiState("t-link", "view-2", "Planta alta"), state.tiles[2])
+        assertEquals(null, (state.tiles[3] as ViewLinkTileUiState).label)
+
+        assertEquals(
+            listOf(
+                GridPlacement(0, 0, 2, 2),
+                GridPlacement(0, 2, 1, 1),
+                GridPlacement(1, 2, 1, 1),
+                GridPlacement(2, 0, 3, 1), // 5 columns clipped to 3.
+            ),
+            state.packing.placements,
+        )
+        assertEquals(3, state.packing.totalRows)
+    }
+
+    @Test
+    fun `view link label override wins over the target view name`() = runTest {
+        val layout = mixedLayout().let { layout ->
+            layout.copy(
+                views = layout.views.map { view ->
+                    view.copy(
+                        tiles = view.tiles.map {
+                            if (it.id == "t-link") it.copy(content = TileContent.ViewLink("view-2", "Arriba")) else it
+                        },
+                    )
+                },
+            )
+        }
+        val viewModel = DashboardViewModel(FakeHaRepository(emptyList()), InMemoryDashboardLayoutStore(layout))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertEquals("Arriba", (viewModel.uiState.value.tiles[2] as ViewLinkTileUiState).label)
+    }
+
+    @Test
+    fun `changing the grid repacks the tiles`() = runTest {
+        val layoutStore = InMemoryDashboardLayoutStore(mixedLayout())
+        val viewModel = DashboardViewModel(FakeHaRepository(emptyList()), layoutStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        layoutStore.update { it.setGrid("view-1", DashboardGrid(columns = 6, rows = 4)) }
+
+        val state = viewModel.uiState.value
+        assertEquals(DashboardGrid(columns = 6, rows = 4), state.grid)
+        assertEquals(
+            listOf(GridPlacement(0, 0, 2, 2), GridPlacement(0, 2, 1, 1), GridPlacement(0, 3, 1, 1), GridPlacement(2, 0, 5, 1)),
+            state.packing.placements,
+        )
+    }
+
+    @Test
+    fun `entity state changes keep the same packing instance and spans`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(mixedLayout()))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val before = viewModel.uiState.value
+
+        viewModel.onTileClick(viewModel.uiState.value.entityTiles().single())
+
+        val after = viewModel.uiState.value
+        val light = after.entityTiles().single()
+        assertTrue(light.isOn)
+        assertEquals(2 to 2, light.colSpan to light.rowSpan)
+        assertSame(before.packing, after.packing)
+    }
 }
+
+private fun DashboardUiState.entityTiles(): List<DashboardTileUiState> = tiles.filterIsInstance<DashboardTileUiState>()
+
+/** view-1 (3×2 grid): a 2×2 light, a spacer, a link to view-2 and an oversized link to a missing view. */
+private fun mixedLayout() = DashboardLayout(
+    views = listOf(
+        DashboardView(
+            id = "view-1",
+            name = "Principal",
+            grid = DashboardGrid(columns = 3, rows = 2),
+            tiles = listOf(
+                DashboardTile("t-light", TileContent.Entity("light.kitchen"), colSpan = 2, rowSpan = 2),
+                DashboardTile("t-spacer", TileContent.Spacer),
+                DashboardTile("t-link", TileContent.ViewLink("view-2")),
+                DashboardTile("t-missing-link", TileContent.ViewLink("view-gone"), colSpan = 5),
+            ),
+        ),
+        DashboardView(id = "view-2", name = "Planta alta"),
+    ),
+)

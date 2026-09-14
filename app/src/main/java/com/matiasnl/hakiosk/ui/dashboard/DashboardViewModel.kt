@@ -4,17 +4,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
+import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
+import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -34,8 +41,16 @@ private fun serviceFor(domain: String): String? = when (domain) {
     else -> null
 }
 
-/** One rendered dashboard button, already joined with its live entity state. */
+/** One cell-occupying item of the dashboard grid, in the view's tile order. Spans are as stored (unclipped). */
+sealed interface DashboardTileUi {
+    val id: String
+    val colSpan: Int
+    val rowSpan: Int
+}
+
+/** An entity button, already joined with its live entity state. */
 data class DashboardTileUiState(
+    override val id: String,
     val entityId: String,
     val label: String,
     val domain: String,
@@ -47,10 +62,33 @@ data class DashboardTileUiState(
     val isMissing: Boolean,
     /** False for read-only domains (sensors, binary_sensors) and unavailable cameras: tapping them is a no-op. */
     val isActionable: Boolean,
-)
+    override val colSpan: Int = 1,
+    override val rowSpan: Int = 1,
+) : DashboardTileUi
+
+/** Empty cells that separate groups of tiles. */
+data class SpacerTileUiState(
+    override val id: String,
+    override val colSpan: Int = 1,
+    override val rowSpan: Int = 1,
+) : DashboardTileUi
+
+/** Link to another view. [label] is the tile's override or the target view's name; null if neither is known. */
+data class ViewLinkTileUiState(
+    override val id: String,
+    val targetViewId: String,
+    val label: String?,
+    override val colSpan: Int = 1,
+    override val rowSpan: Int = 1,
+) : DashboardTileUi
 
 data class DashboardUiState(
-    val tiles: List<DashboardTileUiState> = emptyList(),
+    /** Id of the view being shown, null until the layout loads. */
+    val viewId: String? = null,
+    val grid: DashboardGrid = DashboardGrid(),
+    val tiles: List<DashboardTileUi> = emptyList(),
+    /** Placements index-aligned with [tiles], packed into [grid]'s columns. Same instance until the layout changes. */
+    val packing: GridPacking = GridPacking.Empty,
     val connectionState: HaConnectionState = HaConnectionState.Idle,
     /**
      * True once we've ever synced entities. After [HaRepository.stop] the connection goes back to
@@ -66,10 +104,17 @@ data class OpenCameraEvent(val entityId: String, val label: String)
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
 
+/** Layout-derived part of the state: only recomputed (and re-packed) when the layout changes, not on entity updates. */
+private data class ViewStructure(
+    val view: DashboardView?,
+    val viewNames: Map<String, String>,
+    val packing: GridPacking,
+)
+
 /**
- * Joins the first view's entity tiles with live entity state and maps taps to Home Assistant service
- * calls. Spacer and view-link tiles are ignored for now: none exist yet (nothing creates them before
- * a later stage), and only entity tiles render as buttons today.
+ * Shows the first view: all its tiles in order (entity tiles joined with live entity state, spacers
+ * and view links), its grid settings and the dense packing of the tiles. Maps taps on entity tiles to
+ * Home Assistant service calls.
  */
 class DashboardViewModel(
     private val haRepository: HaRepository,
@@ -86,15 +131,36 @@ class DashboardViewModel(
     /** Emits when a camera tile was tapped, for the screen to navigate to the camera view. */
     val openCameraEvents: SharedFlow<OpenCameraEvent> = _openCameraEvents.asSharedFlow()
 
+    /** Only used from the sequential layout flow below. */
+    private val packer = GridPacker()
+
+    private val structure = dashboardLayoutStore.layout
+        .distinctUntilChanged()
+        .map { layout -> layout.toStructure() }
+
     val uiState: StateFlow<DashboardUiState> = combine(
-        dashboardLayoutStore.layout,
+        structure,
         haRepository.entities,
         haRepository.connectionState,
-    ) { layout, entities, connectionState ->
-        val entityTiles = layout.views.firstOrNull()?.tiles.orEmpty()
-            .mapNotNull { tile -> (tile.content as? TileContent.Entity)?.toUiState(entities) }
+    ) { structure, entities, connectionState ->
+        val view = structure.view
         DashboardUiState(
-            tiles = entityTiles,
+            viewId = view?.id,
+            grid = view?.grid ?: DashboardGrid(),
+            tiles = view?.tiles.orEmpty().map { tile ->
+                when (val content = tile.content) {
+                    is TileContent.Entity -> content.toUiState(tile.id, tile.colSpan, tile.rowSpan, entities)
+                    is TileContent.Spacer -> SpacerTileUiState(tile.id, tile.colSpan, tile.rowSpan)
+                    is TileContent.ViewLink -> ViewLinkTileUiState(
+                        id = tile.id,
+                        targetViewId = content.targetViewId,
+                        label = content.label ?: structure.viewNames[content.targetViewId],
+                        colSpan = tile.colSpan,
+                        rowSpan = tile.rowSpan,
+                    )
+                }
+            },
+            packing = structure.packing,
             connectionState = connectionState,
             hasEntities = entities.isNotEmpty(),
         )
@@ -116,10 +182,23 @@ class DashboardViewModel(
         }
     }
 
-    private fun TileContent.Entity.toUiState(entities: Map<String, HaEntity>): DashboardTileUiState {
+    private fun DashboardLayout.toStructure(): ViewStructure {
+        val view = views.firstOrNull()
+        val packing = view?.let { packer.pack(it.grid.columns, it.tiles, { t -> t.colSpan }, { t -> t.rowSpan }) }
+            ?: GridPacking.Empty
+        return ViewStructure(view = view, viewNames = views.associate { it.id to it.name }, packing = packing)
+    }
+
+    private fun TileContent.Entity.toUiState(
+        id: String,
+        colSpan: Int,
+        rowSpan: Int,
+        entities: Map<String, HaEntity>,
+    ): DashboardTileUiState {
         val entity = entities[entityId]
         val domain = entityId.substringBefore('.')
         return DashboardTileUiState(
+            id = id,
             entityId = entityId,
             label = label ?: entity?.friendlyName ?: entityId,
             domain = domain,
@@ -130,6 +209,8 @@ class DashboardViewModel(
             isMissing = entity == null,
             isActionable = entity != null &&
                 (serviceFor(domain) != null || (domain == CAMERA_DOMAIN && !entity.isUnavailable)),
+            colSpan = colSpan,
+            rowSpan = rowSpan,
         )
     }
 

@@ -2,18 +2,13 @@ package com.matiasnl.hakiosk.ui.dashboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,15 +32,23 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.matiasnl.hakiosk.R
+import com.matiasnl.hakiosk.data.dashboard.DashboardGrid as DashboardGridSettings
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.ui.camera.CameraThumbnailContent
+import com.matiasnl.hakiosk.ui.dashboard.grid.DashboardGrid
+import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
+import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
+
+/** Renders the camera snapshot of [entityId]; polls only while [active]. */
+typealias CameraThumbnailSlot = @Composable (entityId: String, active: Boolean, modifier: Modifier) -> Unit
 
 @Composable
 fun DashboardScreen(
@@ -53,7 +56,7 @@ fun DashboardScreen(
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCamera: (entityId: String, label: String) -> Unit,
-    cameraThumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
+    cameraThumbnail: CameraThumbnailSlot,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -90,7 +93,7 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onOpenEditor: () -> Unit,
     onOpenSettings: () -> Unit,
-    cameraThumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
+    cameraThumbnail: CameraThumbnailSlot,
 ) {
     Scaffold(
         topBar = {
@@ -115,21 +118,29 @@ private fun DashboardContent(
                 EmptyDashboard(onOpenEditor = onOpenEditor, modifier = Modifier.fillMaxSize())
             } else {
                 val isConnected = uiState.connectionState is HaConnectionState.Connected
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 140.dp),
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                DashboardGrid(
+                    items = uiState.tiles,
+                    itemKey = { it.id },
+                    packing = uiState.packing,
+                    visibleRows = uiState.grid.rows,
                     modifier = Modifier
                         .fillMaxSize()
                         .alpha(if (isConnected) 1f else 0.6f),
-                ) {
-                    items(uiState.tiles, key = { it.entityId }) { tile ->
-                        if (tile.domain == "camera") {
-                            CameraTileCard(tile = tile, onClick = { onTileClick(tile) }, thumbnail = cameraThumbnail)
+                ) { tile, placement, isVisible ->
+                    when (tile) {
+                        is DashboardTileUiState -> if (tile.domain == "camera") {
+                            CameraTileCard(
+                                tile = tile,
+                                placement = placement,
+                                isVisible = isVisible,
+                                onClick = { onTileClick(tile) },
+                                thumbnail = cameraThumbnail,
+                            )
                         } else {
-                            DashboardTileCard(tile = tile, onClick = { onTileClick(tile) })
+                            DashboardTileCard(tile = tile, placement = placement, onClick = { onTileClick(tile) })
                         }
+                        is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
+                        is ViewLinkTileUiState -> ViewLinkTileCard(tile = tile, placement = placement)
                     }
                 }
             }
@@ -202,9 +213,21 @@ private fun EmptyDashboard(onOpenEditor: () -> Unit, modifier: Modifier = Modifi
     }
 }
 
+/** Tiles spanning at least 2×2 cells get bigger text. */
+private fun GridPlacement.isLarge(): Boolean = colSpan >= 2 && rowSpan >= 2
+
+@Composable
+private fun labelStyle(placement: GridPlacement): TextStyle =
+    if (placement.isLarge()) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium
+
+@Composable
+private fun stateStyle(placement: GridPlacement): TextStyle =
+    if (placement.isLarge()) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyMedium
+
 @Composable
 private fun DashboardTileCard(
     tile: DashboardTileUiState,
+    placement: GridPlacement,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -230,8 +253,7 @@ private fun DashboardTileCard(
 
     Card(
         modifier = modifier
-            .heightIn(min = 120.dp)
-            .fillMaxWidth()
+            .fillMaxSize()
             .then(if (tile.isActionable) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(containerColor = containerColor, contentColor = contentColor),
     ) {
@@ -241,39 +263,41 @@ private fun DashboardTileCard(
         ) {
             Text(
                 text = tile.label,
-                style = MaterialTheme.typography.titleMedium,
+                style = labelStyle(placement),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(text = stateText, style = MaterialTheme.typography.bodyMedium)
+            Text(text = stateText, style = stateStyle(placement), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 /**
- * Camera tile: snapshot thumbnail with the name overlaid. Same sizing as the other tiles. Unavailable
- * or missing cameras show the placeholder only (no polling of a camera that can't answer).
+ * Camera tile: snapshot thumbnail with the name overlaid. Unavailable or missing cameras show the
+ * placeholder only (no polling of a camera that can't answer); offscreen ones ([isVisible] false)
+ * keep their last image but stop polling.
  */
 @Composable
 private fun CameraTileCard(
     tile: DashboardTileUiState,
+    placement: GridPlacement,
+    isVisible: Boolean,
     onClick: () -> Unit,
-    thumbnail: @Composable (entityId: String, modifier: Modifier) -> Unit,
+    thumbnail: CameraThumbnailSlot,
     modifier: Modifier = Modifier,
 ) {
     val dimmed = tile.isMissing || tile.isUnavailable
     Card(
         modifier = modifier
-            .heightIn(min = 120.dp)
-            .fillMaxWidth()
+            .fillMaxSize()
             .alpha(if (dimmed) 0.5f else 1f)
             .then(if (tile.isActionable) Modifier.clickable(onClick = onClick) else Modifier),
     ) {
-        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             if (dimmed) {
                 CameraThumbnailContent(image = null, modifier = Modifier.matchParentSize())
             } else {
-                thumbnail(tile.entityId, Modifier.matchParentSize())
+                thumbnail(tile.entityId, isVisible, Modifier.matchParentSize())
             }
             Column(
                 modifier = Modifier
@@ -285,7 +309,7 @@ private fun CameraTileCard(
                 Text(
                     text = tile.label,
                     color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = labelStyle(placement),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -303,76 +327,86 @@ private fun CameraTileCard(
     }
 }
 
-@Preview(showBackground = true, widthDp = 400, heightDp = 700)
+/** Link to another view. Not interactive yet (view navigation arrives with multiple views). */
+@Composable
+private fun ViewLinkTileCard(
+    tile: ViewLinkTileUiState,
+    placement: GridPlacement,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = tile.label ?: stringResource(R.string.dashboard_view_link_fallback),
+                style = labelStyle(placement),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(text = stringResource(R.string.dashboard_view_link_hint), style = stateStyle(placement))
+        }
+    }
+}
+
+private fun previewEntity(
+    id: String,
+    label: String,
+    stateValue: String?,
+    isOn: Boolean = false,
+    unit: String? = null,
+    isMissing: Boolean = false,
+    colSpan: Int = 1,
+    rowSpan: Int = 1,
+) = DashboardTileUiState(
+    id = id,
+    entityId = id,
+    label = label,
+    domain = id.substringBefore('.'),
+    stateValue = stateValue,
+    unitOfMeasurement = unit,
+    isOn = isOn,
+    isUnavailable = false,
+    isMissing = isMissing,
+    isActionable = !isMissing && id.substringBefore('.') != "sensor",
+    colSpan = colSpan,
+    rowSpan = rowSpan,
+)
+
+@Preview(showBackground = true, widthDp = 900, heightDp = 600)
 @Composable
 private fun DashboardPreview() {
+    val tiles = listOf(
+        previewEntity("light.living_room", "Living room", "on", isOn = true, colSpan = 2, rowSpan = 2),
+        previewEntity("sensor.outdoor_temperature", "Outdoor temperature", "18.5", unit = "°C"),
+        previewEntity("switch.coffee_maker", "Coffee maker", "off"),
+        SpacerTileUiState("spacer"),
+        previewEntity("camera.front_door", "Front door", "idle", colSpan = 2),
+        ViewLinkTileUiState("link", targetViewId = "v2", label = "Planta alta"),
+        previewEntity("light.gone", "Removed bulb", null, isMissing = true),
+    )
+    val grid = DashboardGridSettings(columns = 4, rows = 3)
     HAKioskTheme {
         DashboardContent(
             uiState = DashboardUiState(
-                tiles = listOf(
-                    DashboardTileUiState(
-                        entityId = "light.living_room",
-                        label = "Living room",
-                        domain = "light",
-                        stateValue = "on",
-                        unitOfMeasurement = null,
-                        isOn = true,
-                        isUnavailable = false,
-                        isMissing = false,
-                        isActionable = true,
-                    ),
-                    DashboardTileUiState(
-                        entityId = "sensor.outdoor_temperature",
-                        label = "Outdoor temperature",
-                        domain = "sensor",
-                        stateValue = "18.5",
-                        unitOfMeasurement = "°C",
-                        isOn = false,
-                        isUnavailable = false,
-                        isMissing = false,
-                        isActionable = false,
-                    ),
-                    DashboardTileUiState(
-                        entityId = "switch.coffee_maker",
-                        label = "Coffee maker",
-                        domain = "switch",
-                        stateValue = "off",
-                        unitOfMeasurement = null,
-                        isOn = false,
-                        isUnavailable = false,
-                        isMissing = false,
-                        isActionable = true,
-                    ),
-                    DashboardTileUiState(
-                        entityId = "camera.front_door",
-                        label = "Front door",
-                        domain = "camera",
-                        stateValue = "idle",
-                        unitOfMeasurement = null,
-                        isOn = false,
-                        isUnavailable = false,
-                        isMissing = false,
-                        isActionable = true,
-                    ),
-                    DashboardTileUiState(
-                        entityId = "light.gone",
-                        label = "Removed bulb",
-                        domain = "light",
-                        stateValue = null,
-                        unitOfMeasurement = null,
-                        isOn = false,
-                        isUnavailable = false,
-                        isMissing = true,
-                        isActionable = false,
-                    ),
-                ),
+                viewId = "main",
+                grid = grid,
+                tiles = tiles,
+                packing = GridPacker().pack(grid.columns, tiles, { it.colSpan }, { it.rowSpan }),
                 connectionState = HaConnectionState.Connected,
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
-            cameraThumbnail = { _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -387,7 +421,7 @@ private fun DashboardEmptyPreview() {
             onTileClick = {},
             onOpenEditor = {},
             onOpenSettings = {},
-            cameraThumbnail = { _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
