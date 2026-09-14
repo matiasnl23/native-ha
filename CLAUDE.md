@@ -29,6 +29,9 @@ Rediseño del dashboard y su historial por etapas: [`docs/UI-REWORK.md`](docs/UI
   tests sobre el resultado final. Si falla algo, no se integra.
 - `local.properties` no va en git (ruta del SDK por máquina). En un worktree nuevo hay que copiarlo
   desde la raíz del repo.
+- Las builds de debug se firman con `app/debug.keystore` (commiteado a propósito para que todas las
+  máquinas compartan firma y `adb install -r` no obligue a desinstalar). No regenerarlo ni
+  reemplazarlo. **Nunca** commitear claves ni contraseñas de release. Ver `docs/SETUP.md`.
 
 ## Agentes y trabajo en paralelo
 

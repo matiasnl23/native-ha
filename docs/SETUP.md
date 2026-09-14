@@ -118,7 +118,24 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 `adb install -r` actualiza la app **sin borrar sus datos** (URL y token de Home Assistant, layout del
 dashboard). Evitá `adb uninstall` salvo que quieras empezar de cero.
 
-## 7. Datos de la app en cada dispositivo
+## 7. Firma de debug compartida
+
+Las builds de debug se firman con `app/debug.keystore`, que está en el repo a propósito (contraseña y
+alias estándar de Android: `android` / `androiddebugkey`). Así todas las máquinas (esta Linux, la
+MacBook, los agentes) generan APKs con **la misma firma**, y `adb install -r` puede actualizar una
+app instalada desde otra computadora **sin borrar sus datos**.
+
+Sin esto, cada máquina firma con su propio `~/.android/debug.keystore` y la instalación falla con
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`; la única salida sería desinstalar y perder la configuración.
+
+- No reemplaces ni regeneres ese archivo: la tablet, el celular y el emulador ya tienen la app firmada
+  con esa clave.
+- Es **solo para debug**. La firma de release (tablets de kiosko en producción) usará otra clave que
+  **nunca** se sube al repo. Antes de provisionar Device Owner en una tablet de kiosko, conviene
+  instalarle la build de release y desactivar la depuración USB (cambiar de firma implica reinstalar
+  una vez).
+
+## 8. Datos de la app en cada dispositivo
 
 La URL de Home Assistant, el token y el layout del dashboard se guardan **en cada dispositivo**
 (el token cifrado con una clave del Android Keystore, que no se puede exportar). Un emulador nuevo en
