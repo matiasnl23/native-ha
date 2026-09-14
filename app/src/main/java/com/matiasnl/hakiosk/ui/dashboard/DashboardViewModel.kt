@@ -49,7 +49,16 @@ data class DashboardTileUiState(
 data class DashboardUiState(
     val tiles: List<DashboardTileUiState> = emptyList(),
     val connectionState: HaConnectionState = HaConnectionState.Idle,
+    /**
+     * True once we've ever synced entities. After [HaRepository.stop] the connection goes back to
+     * Idle but the last known entities (and this flag) stay, so the UI shouldn't treat that as an
+     * error or an empty dashboard.
+     */
+    val hasEntities: Boolean = false,
 )
+
+/** A tile's service call failed; [message] is the repository's error message shown verbatim. */
+data class DashboardActionError(val label: String, val message: String)
 
 /** Joins the configured tiles with live entity state and maps taps to Home Assistant service calls. */
 class DashboardViewModel(
@@ -57,10 +66,10 @@ class DashboardViewModel(
     dashboardConfigStore: DashboardConfigStore,
 ) : ViewModel() {
 
-    private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    private val _errorEvents = MutableSharedFlow<DashboardActionError>(extraBufferCapacity = 1)
 
-    /** Emits the label of a tile whose service call just failed, for the screen to show as a snackbar. */
-    val errorEvents: SharedFlow<String> = _errorEvents.asSharedFlow()
+    /** Emits when a tile's service call just failed, for the screen to show as a snackbar. */
+    val errorEvents: SharedFlow<DashboardActionError> = _errorEvents.asSharedFlow()
 
     val uiState: StateFlow<DashboardUiState> = combine(
         dashboardConfigStore.tiles,
@@ -70,6 +79,7 @@ class DashboardViewModel(
         DashboardUiState(
             tiles = tiles.map { it.toUiState(entities) },
             connectionState = connectionState,
+            hasEntities = entities.isNotEmpty(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
@@ -79,7 +89,8 @@ class DashboardViewModel(
         viewModelScope.launch {
             val result = haRepository.callService(tile.domain, service, tile.entityId)
             if (result.isFailure) {
-                _errorEvents.tryEmit(tile.label)
+                val message = result.exceptionOrNull()?.message ?: tile.entityId
+                _errorEvents.tryEmit(DashboardActionError(tile.label, message))
             }
         }
     }

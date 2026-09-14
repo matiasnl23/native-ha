@@ -151,19 +151,35 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `failed service call emits an error event with the tile label`() = runTest {
+    fun `failed service call emits an error event with the tile label and repository message`() = runTest {
         val repository = FailingHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
         val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.kitchen", label = "Cocina")))
         val viewModel = DashboardViewModel(repository, configStore)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         val tile = viewModel.uiState.value.tiles.single()
 
-        var emitted: String? = null
+        var emitted: DashboardActionError? = null
         backgroundScope.launch(Dispatchers.Main) {
             viewModel.errorEvents.collect { emitted = it }
         }
         viewModel.onTileClick(tile)
 
-        assertEquals("Cocina", emitted)
+        assertEquals("Cocina", emitted?.label)
+        assertEquals("boom", emitted?.message)
+    }
+
+    @Test
+    fun `hasEntities stays true after entities were synced even if the state goes idle`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "on", "Kitchen")))
+        val configStore = InMemoryDashboardConfigStore(listOf(DashboardTile("light.kitchen")))
+        val viewModel = DashboardViewModel(repository, configStore)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        repository.start()
+        assertTrue(viewModel.uiState.value.hasEntities)
+
+        repository.stop()
+        assertEquals(com.matiasnl.hakiosk.data.ha.HaConnectionState.Idle, viewModel.uiState.value.connectionState)
+        assertTrue(viewModel.uiState.value.hasEntities)
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -51,8 +53,10 @@ fun DashboardScreen(
     val context = LocalContext.current
 
     LaunchedEffect(viewModel) {
-        viewModel.errorEvents.collect { label ->
-            snackbarHostState.showSnackbar(context.getString(R.string.dashboard_service_call_error, label))
+        viewModel.errorEvents.collect { error ->
+            snackbarHostState.showSnackbar(
+                context.getString(R.string.dashboard_service_call_error, error.label, error.message),
+            )
         }
     }
 
@@ -87,17 +91,24 @@ private fun DashboardContent(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            ConnectionBanner(uiState.connectionState)
+            ConnectionBanner(
+                state = uiState.connectionState,
+                hasEntities = uiState.hasEntities,
+                onOpenSettings = onOpenSettings,
+            )
 
             if (uiState.tiles.isEmpty()) {
                 EmptyDashboard(onOpenEditor = onOpenEditor, modifier = Modifier.fillMaxSize())
             } else {
+                val isConnected = uiState.connectionState is HaConnectionState.Connected
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 140.dp),
                     contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(if (isConnected) 1f else 0.6f),
                 ) {
                     items(uiState.tiles, key = { it.entityId }) { tile ->
                         DashboardTileCard(tile = tile, onClick = { onTileClick(tile) })
@@ -109,7 +120,16 @@ private fun DashboardContent(
 }
 
 @Composable
-private fun ConnectionBanner(state: HaConnectionState, modifier: Modifier = Modifier) {
+private fun ConnectionBanner(
+    state: HaConnectionState,
+    hasEntities: Boolean,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Idle also happens right after stop() (e.g. the activity paused): if we already have entities
+    // from a previous sync, that's not an error worth interrupting the kiosk view for.
+    if (state == HaConnectionState.Idle && hasEntities) return
+
     val text = when (state) {
         HaConnectionState.Connected -> return
         HaConnectionState.Idle -> stringResource(R.string.connection_idle)
@@ -121,12 +141,22 @@ private fun ConnectionBanner(state: HaConnectionState, modifier: Modifier = Modi
         color = MaterialTheme.colorScheme.errorContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-            style = MaterialTheme.typography.bodySmall,
+        Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (state is HaConnectionState.AuthFailed) {
+                TextButton(onClick = onOpenSettings) {
+                    Text(stringResource(R.string.connection_auth_failed_action))
+                }
+            }
+        }
     }
 }
 
