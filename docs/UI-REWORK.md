@@ -62,7 +62,9 @@ editor viejo ("Ordenar lista") se eliminó.
   de reordenar).
 - Agente: `android-ui` (Opus: gestos + reempaquetado en vivo con buena fluidez).
 
-### Etapa 5 — Múltiples vistas
+### Etapa 5 — Múltiples vistas ✅
+Swipe deshabilitado durante el modo edición (se cambia de vista con chips). Última vista y retorno por
+inactividad guardados aparte del layout (`dashboard_view_prefs`).
 - `HorizontalPager` para swipe entre vistas, con indicador de página.
 - Botón "link a vista" funcional.
 - Gestión de vistas: crear, renombrar, borrar, reordenar.
