@@ -31,6 +31,29 @@ data class HaEntity(
     val isUnavailable: Boolean get() = state == "unavailable" || state == "unknown"
 }
 
+data class HaFloor(
+    val floorId: String,
+    val name: String,
+    /** Ordering hint set by the user in HA (0 = ground floor, negative = basement). */
+    val level: Int?,
+)
+
+data class HaArea(
+    val areaId: String,
+    val name: String,
+    val floorId: String?,
+)
+
+/** Floors, areas and the area each entity belongs to, as configured in Home Assistant. */
+data class HaRegistry(
+    /** Sorted by level (nulls last), then name. */
+    val floors: List<HaFloor> = emptyList(),
+    /** Sorted by name. */
+    val areas: List<HaArea> = emptyList(),
+    /** entityId -> areaId. The entity's own area wins; otherwise its device's area. Unassigned entities are absent. */
+    val entityAreas: Map<String, String> = emptyMap(),
+)
+
 sealed interface HaConnectionState {
     /** No server configured, or [HaRepository.stop] was called. */
     data object Idle : HaConnectionState

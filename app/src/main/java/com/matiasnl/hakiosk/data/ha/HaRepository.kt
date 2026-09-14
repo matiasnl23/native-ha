@@ -14,6 +14,9 @@ interface HaRepository {
     /** Latest state of every entity, keyed by entity id. Empty until the first sync completes. */
     val entities: StateFlow<Map<String, HaEntity>>
 
+    /** Floors/areas and entity-to-area mapping. Empty until the first sync; kept up to date on registry changes. */
+    val registry: StateFlow<HaRegistry>
+
     /** Connects using the stored config and keeps the connection alive (reconnecting with backoff). */
     fun start()
 

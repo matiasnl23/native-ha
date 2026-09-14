@@ -1,9 +1,12 @@
 package com.matiasnl.hakiosk.data.ha.fake
 
+import com.matiasnl.hakiosk.data.ha.HaArea
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaConnectionTestResult
 import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.data.ha.HaFloor
+import com.matiasnl.hakiosk.data.ha.HaRegistry
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,12 +19,15 @@ import kotlinx.serialization.json.JsonPrimitive
 /** In-memory repository for previews, UI tests and running the app before the real client exists. */
 class FakeHaRepository(
     initialEntities: List<HaEntity> = sampleEntities(),
+    initialRegistry: HaRegistry = sampleRegistry(),
 ) : HaRepository {
     private val _connectionState = MutableStateFlow<HaConnectionState>(HaConnectionState.Idle)
     override val connectionState: StateFlow<HaConnectionState> = _connectionState.asStateFlow()
 
     private val _entities = MutableStateFlow(initialEntities.associateBy { it.entityId })
     override val entities: StateFlow<Map<String, HaEntity>> = _entities.asStateFlow()
+
+    override val registry: StateFlow<HaRegistry> = MutableStateFlow(initialRegistry).asStateFlow()
 
     override fun start() {
         _connectionState.value = HaConnectionState.Connected
@@ -74,6 +80,26 @@ fun sampleEntities(): List<HaEntity> = listOf(
     fakeEntity("sensor.outdoor_temperature", "18.5", "Outdoor temperature", unit = "°C"),
     fakeEntity("scene.movie_night", "scening", "Movie night"),
     fakeEntity("camera.front_door", "idle", "Front door"),
+)
+
+fun sampleRegistry(): HaRegistry = HaRegistry(
+    floors = listOf(
+        HaFloor("ground", "Ground floor", level = 0),
+        HaFloor("first", "First floor", level = 1),
+    ),
+    areas = listOf(
+        HaArea("bedroom", "Bedroom", floorId = "first"),
+        HaArea("entrance", "Entrance", floorId = "ground"),
+        HaArea("kitchen", "Kitchen", floorId = "ground"),
+        HaArea("living_room", "Living room", floorId = "ground"),
+    ),
+    entityAreas = mapOf(
+        "light.living_room" to "living_room",
+        "scene.movie_night" to "living_room",
+        "light.kitchen" to "kitchen",
+        "switch.coffee_maker" to "kitchen",
+        "camera.front_door" to "entrance",
+    ),
 )
 
 private fun fakeEntity(id: String, state: String, name: String, unit: String? = null) = HaEntity(

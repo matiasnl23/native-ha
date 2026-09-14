@@ -5,6 +5,7 @@ import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaConnectionTestResult
 import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.data.ha.HaRegistry
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
@@ -31,6 +32,7 @@ private class FailingHaRepository(
         MutableStateFlow<HaConnectionState>(HaConnectionState.Connected).asStateFlow()
     override val entities: StateFlow<Map<String, HaEntity>> =
         MutableStateFlow(initialEntities.associateBy { it.entityId }).asStateFlow()
+    override val registry: StateFlow<HaRegistry> = MutableStateFlow(HaRegistry()).asStateFlow()
 
     override fun start() {}
     override fun stop() {}

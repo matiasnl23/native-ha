@@ -3,6 +3,7 @@ package com.matiasnl.hakiosk.ui.setup
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaConnectionTestResult
 import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.data.ha.HaRegistry
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.InMemoryHaConfigStore
@@ -28,6 +29,8 @@ private class ScriptedHaRepository(
 
     private val _entities = MutableStateFlow<Map<String, HaEntity>>(emptyMap())
     override val entities: StateFlow<Map<String, HaEntity>> = _entities.asStateFlow()
+
+    override val registry: StateFlow<HaRegistry> = MutableStateFlow(HaRegistry()).asStateFlow()
 
     var lastTestedConfig: HaServerConfig? = null
         private set

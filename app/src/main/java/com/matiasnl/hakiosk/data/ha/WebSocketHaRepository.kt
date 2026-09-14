@@ -53,6 +53,10 @@ class WebSocketHaRepository(
     private val _entities = MutableStateFlow<Map<String, HaEntity>>(emptyMap())
     override val entities: StateFlow<Map<String, HaEntity>> = _entities.asStateFlow()
 
+    // Registry sync not implemented yet: stays empty.
+    private val _registry = MutableStateFlow(HaRegistry())
+    override val registry: StateFlow<HaRegistry> = _registry.asStateFlow()
+
     private val lock = Any()
     private var job: Job? = null
     private var generation = 0L
