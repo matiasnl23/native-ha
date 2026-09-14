@@ -20,6 +20,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Shared debug key committed on purpose: every machine signs debug builds identically, so
+        // `adb install -r` updates an app installed from another computer without wiping its data.
+        // Debug only; the release key must never be committed. See docs/SETUP.md.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             optimization {
