@@ -2,8 +2,10 @@
    Backup rules for Android 11 and lower (API < 31).
    See https://developer.android.com/guide/topics/data/autobackup
    The HA server config is excluded: its token is encrypted with a device-bound Keystore key and
-   can't be decrypted after a restore on another device.
+   can't be decrypted after a restore on another device. The MQTT broker config is excluded for the
+   same reason (encrypted password) and because its device id must be unique per install.
 -->
 <full-backup-content>
     <exclude domain="file" path="datastore/ha_server_config.preferences_pb" />
+    <exclude domain="file" path="datastore/mqtt_config.preferences_pb" />
 </full-backup-content>
