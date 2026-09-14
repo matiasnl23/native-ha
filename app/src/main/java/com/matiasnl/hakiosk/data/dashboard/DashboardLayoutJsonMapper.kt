@@ -36,7 +36,13 @@ data class DecodedDashboardLayout(
  * unit-tested on the plain JVM; [DataStoreDashboardLayoutStore] is a thin wrapper around it.
  */
 object DashboardLayoutJsonMapper {
-    private val json = Json { ignoreUnknownKeys = true }
+    // encodeDefaults stays off (the library default), so default-valued fields such as a DEFAULT tap
+    // action are never written. coerceInputValues makes an enum value this version doesn't know (written
+    // by a newer app) fall back to the field's default instead of failing the whole layout.
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    }
 
     fun encode(layout: DashboardLayout): String =
         json.encodeToString(PersistedDashboardLayout(views = layout.views))

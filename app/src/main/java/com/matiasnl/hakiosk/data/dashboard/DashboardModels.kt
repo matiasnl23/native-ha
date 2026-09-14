@@ -53,10 +53,18 @@ data class DashboardTile(
 
 @Serializable
 sealed interface TileContent {
-    /** A Home Assistant entity button. [label] overrides the entity's friendly name when not null. */
+    /**
+     * A Home Assistant entity button. [label] overrides the entity's friendly name when not null.
+     * [tapAction] is the tile's own tap preference; stored JSON from before it existed decodes as
+     * [TileTapAction.DEFAULT], and the default is never written.
+     */
     @Serializable
     @SerialName("entity")
-    data class Entity(val entityId: String, val label: String? = null) : TileContent
+    data class Entity(
+        val entityId: String,
+        val label: String? = null,
+        val tapAction: TileTapAction = TileTapAction.DEFAULT,
+    ) : TileContent
 
     /** Navigates to another [DashboardView] when tapped. */
     @Serializable
@@ -67,6 +75,25 @@ sealed interface TileContent {
     @Serializable
     @SerialName("spacer")
     data object Spacer : TileContent
+}
+
+/**
+ * What tapping an entity tile does, as chosen per tile in the edit modal. Only meaningful for domains
+ * that offer both a quick action and a details panel (e.g. lights); other domains ignore it.
+ */
+@Serializable
+enum class TileTapAction {
+    /** Whatever the domain does by default. */
+    @SerialName("default")
+    DEFAULT,
+
+    /** Toggle the entity. */
+    @SerialName("toggle")
+    TOGGLE,
+
+    /** Open the domain's details panel. */
+    @SerialName("open_details")
+    OPEN_DETAILS,
 }
 
 /** Valid range for grid columns/rows and tile spans. */

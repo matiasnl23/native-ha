@@ -34,6 +34,66 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `tap action round-trips and the default is not written`() {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "v1",
+                    name = "Principal",
+                    tiles = listOf(
+                        DashboardTile("a", TileContent.Entity("light.a")),
+                        DashboardTile("b", TileContent.Entity("light.b", tapAction = TileTapAction.OPEN_DETAILS)),
+                        DashboardTile("c", TileContent.Entity("light.c", tapAction = TileTapAction.TOGGLE)),
+                    ),
+                ),
+            ),
+        )
+
+        val json = DashboardLayoutJsonMapper.encode(layout)
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = json, legacyTilesJson = null)
+
+        assertEquals(layout, decoded.layout)
+        assertTrue(json.contains("\"tapAction\":\"open_details\""))
+        assertTrue(json.contains("\"tapAction\":\"toggle\""))
+        assertEquals(2, Regex("tapAction").findAll(json).count())
+    }
+
+    @Test
+    fun `stored json from before the tap action existed decodes as DEFAULT`() {
+        val stage5Json = """
+            {"version":1,"views":[{"id":"v1","name":"Principal","grid":{"columns":4,"rows":3},"tiles":[
+              {"id":"t1","content":{"type":"entity","entityId":"light.kitchen","label":"Cocina"},"colSpan":2,"rowSpan":1},
+              {"id":"t2","content":{"type":"entity","entityId":"switch.fan"}},
+              {"id":"t3","content":{"type":"spacer"}},
+              {"id":"t4","content":{"type":"view_link","targetViewId":"v2"}}
+            ]}]}
+        """.trimIndent()
+
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = stage5Json, legacyTilesJson = null)
+
+        val tiles = decoded.layout.views.single().tiles
+        assertEquals(listOf("t1", "t2", "t3", "t4"), tiles.map { it.id })
+        assertEquals(TileContent.Entity("light.kitchen", "Cocina", TileTapAction.DEFAULT), tiles[0].content)
+        assertEquals(TileTapAction.DEFAULT, (tiles[1].content as TileContent.Entity).tapAction)
+        assertEquals(TileContent.Spacer, tiles[2].content)
+        assertFalse(decoded.shouldPersist)
+    }
+
+    @Test
+    fun `an unknown tap action written by a newer app falls back to DEFAULT without losing the layout`() {
+        val json = """
+            {"version":1,"views":[{"id":"v1","name":"Principal","tiles":[
+              {"id":"t1","content":{"type":"entity","entityId":"light.kitchen","tapAction":"double_tap_magic"}}
+            ]}]}
+        """.trimIndent()
+
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = json, legacyTilesJson = null)
+
+        assertEquals("v1", decoded.layout.views.single().id)
+        assertEquals(TileContent.Entity("light.kitchen"), decoded.layout.views.single().tiles.single().content)
+    }
+
+    @Test
     fun `decode with nothing stored returns a default layout that is not marked for persisting`() {
         val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = null, legacyTilesJson = null, FakeDashboardIdProvider())
 
