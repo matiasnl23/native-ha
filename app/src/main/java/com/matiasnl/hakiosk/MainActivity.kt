@@ -1,6 +1,7 @@
 package com.matiasnl.hakiosk
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,6 +14,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The kiosk runs 24/7; there is no Device Owner yet (see README.md) so the "screen off" remote
+        // command is only an in-app overlay (see ScreenControlViewModel) rather than a real display
+        // power-off. Without this flag the system's own timeout would turn the real display off under
+        // that overlay, and a remote "on" command wouldn't be able to wake it back up.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             HAKioskTheme {
                 HaKioskNavGraph(
@@ -23,6 +29,8 @@ class MainActivity : ComponentActivity() {
                     cameraModule = container.camera,
                     mqttConfigStore = container.mqttConfigStore,
                     mqttRemoteControl = container.mqttRemoteControl,
+                    remoteControlBridge = container.remoteControlBridge,
+                    displayPreferencesStore = container.displayPreferencesStore,
                 )
             }
         }
