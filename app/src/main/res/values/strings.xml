@@ -40,6 +40,10 @@
     <string name="connection_auth_failed_action">Configurar</string>
     <string name="connection_disconnected">Desconectado: %1$s. Reintentando…</string>
 
+    <!-- Camera -->
+    <string name="camera_thumbnail_description">Imagen de la cámara</string>
+    <string name="camera_thumbnail_placeholder">Sin imagen</string>
+
     <!-- Editor -->
     <string name="editor_title">Editar botones</string>
     <string name="editor_current_tiles">Botones del dashboard</string>
