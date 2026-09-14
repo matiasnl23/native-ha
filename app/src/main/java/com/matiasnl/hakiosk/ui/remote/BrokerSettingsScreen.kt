@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -101,6 +104,12 @@ private fun BrokerSettingsContent(
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text(stringResource(R.string.remote_broker_back)) }
                 },
+                // Always reachable, even when the form doesn't fit (tablet in landscape, keyboard open).
+                actions = {
+                    TextButton(onClick = onSave, enabled = uiState.canSave) {
+                        Text(stringResource(R.string.remote_broker_save))
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -108,6 +117,8 @@ private fun BrokerSettingsContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
