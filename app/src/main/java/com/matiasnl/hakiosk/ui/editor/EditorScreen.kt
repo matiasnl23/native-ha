@@ -23,6 +23,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +33,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.matiasnl.hakiosk.R
+import com.matiasnl.hakiosk.data.ha.HaArea
+import com.matiasnl.hakiosk.data.ha.HaFloor
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
 @Composable
@@ -43,6 +48,8 @@ fun EditorScreen(
         uiState = uiState,
         onQueryChange = viewModel::onQueryChange,
         onDomainFilterChange = viewModel::onDomainFilterChange,
+        onFloorFilterChange = viewModel::onFloorFilterChange,
+        onAreaFilterChange = viewModel::onAreaFilterChange,
         onAdd = viewModel::addTile,
         onRemove = viewModel::removeTile,
         onLabelChange = viewModel::setLabel,
@@ -59,6 +66,8 @@ private fun EditorContent(
     uiState: EditorUiState,
     onQueryChange: (String) -> Unit,
     onDomainFilterChange: (String?) -> Unit,
+    onFloorFilterChange: (String?) -> Unit,
+    onAreaFilterChange: (String?) -> Unit,
     onAdd: (String) -> Unit,
     onRemove: (String) -> Unit,
     onLabelChange: (String, String) -> Unit,
@@ -67,6 +76,9 @@ private fun EditorContent(
     onSave: () -> Unit,
     onBack: () -> Unit,
 ) {
+    // Collapsed by default: on a tablet in landscape, three chip rows plus the search field can
+    // push the available-entities list off-screen. The toggle survives rotation/process death.
+    var filtersExpanded by rememberSaveable { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -132,23 +144,91 @@ private fun EditorContent(
                 )
             }
             item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    item(key = "__all_domains__") {
-                        FilterChip(
-                            selected = uiState.domainFilter == null,
-                            onClick = { onDomainFilterChange(null) },
-                            label = { ChipLabel(stringResource(R.string.editor_filter_all)) },
-                        )
+                TextButton(onClick = { filtersExpanded = !filtersExpanded }) {
+                    Text(
+                        stringResource(
+                            if (filtersExpanded) R.string.editor_filters_hide else R.string.editor_filters_show,
+                        ),
+                    )
+                }
+            }
+            if (filtersExpanded) {
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        item(key = "__all_domains__") {
+                            FilterChip(
+                                selected = uiState.domainFilter == null,
+                                onClick = { onDomainFilterChange(null) },
+                                label = { ChipLabel(stringResource(R.string.editor_filter_all)) },
+                            )
+                        }
+                        items(uiState.domains, key = { it }) { domain ->
+                            FilterChip(
+                                selected = uiState.domainFilter == domain,
+                                onClick = { onDomainFilterChange(domain) },
+                                label = { ChipLabel(domain) },
+                            )
+                        }
                     }
-                    items(uiState.domains, key = { it }) { domain ->
-                        FilterChip(
-                            selected = uiState.domainFilter == domain,
-                            onClick = { onDomainFilterChange(domain) },
-                            label = { ChipLabel(domain) },
-                        )
+                }
+
+                if (uiState.floors.isNotEmpty()) {
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            item(key = "__all_floors__") {
+                                FilterChip(
+                                    selected = uiState.floorFilter == null,
+                                    onClick = { onFloorFilterChange(null) },
+                                    label = { ChipLabel(stringResource(R.string.editor_filter_all_floors)) },
+                                )
+                            }
+                            items(uiState.floors, key = { it.floorId }) { floor ->
+                                FilterChip(
+                                    selected = uiState.floorFilter == floor.floorId,
+                                    onClick = { onFloorFilterChange(floor.floorId) },
+                                    label = { ChipLabel(floor.name) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (uiState.areas.isNotEmpty()) {
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            item(key = "__all_areas__") {
+                                FilterChip(
+                                    selected = uiState.areaFilter == null,
+                                    onClick = { onAreaFilterChange(null) },
+                                    label = { ChipLabel(stringResource(R.string.editor_filter_all_areas)) },
+                                )
+                            }
+                            if (uiState.floorFilter == null) {
+                                item(key = "__no_area__") {
+                                    FilterChip(
+                                        selected = uiState.areaFilter == EditorViewModel.NO_AREA_ID,
+                                        onClick = { onAreaFilterChange(EditorViewModel.NO_AREA_ID) },
+                                        label = { ChipLabel(stringResource(R.string.editor_filter_no_area)) },
+                                    )
+                                }
+                            }
+                            items(uiState.areas, key = { it.areaId }) { area ->
+                                FilterChip(
+                                    selected = uiState.areaFilter == area.areaId,
+                                    onClick = { onAreaFilterChange(area.areaId) },
+                                    label = { ChipLabel(area.name) },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -214,6 +294,18 @@ private fun AvailableEntityRow(row: EditorAvailableRow, onAdd: () -> Unit) {
         Column(modifier = Modifier.padding(end = 8.dp)) {
             Text(text = row.friendlyName, style = MaterialTheme.typography.bodyLarge)
             Text(text = row.entityId, style = MaterialTheme.typography.bodySmall)
+            if (row.areaName != null) {
+                val location = if (row.floorName != null) {
+                    "${row.floorName} · ${row.areaName}"
+                } else {
+                    row.areaName
+                }
+                Text(
+                    text = location,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (row.alreadyAdded) {
             Text(
@@ -238,14 +330,21 @@ private fun EditorScreenPreview() {
                     EditorTileRow("switch.coffee_maker", "Coffee maker", label = "Café"),
                 ),
                 availableEntities = listOf(
-                    EditorAvailableRow("light.kitchen", "Kitchen", "light", alreadyAdded = false),
+                    EditorAvailableRow(
+                        "light.kitchen", "Kitchen", "light", alreadyAdded = false,
+                        areaName = "Kitchen", floorName = "Ground floor",
+                    ),
                     EditorAvailableRow("light.living_room", "Living room", "light", alreadyAdded = true),
                     EditorAvailableRow("sensor.outdoor_temperature", "Outdoor temperature", "sensor", alreadyAdded = false),
                 ),
                 domains = listOf("light", "sensor", "switch"),
+                floors = listOf(HaFloor("ground", "Ground floor", 0), HaFloor("first", "First floor", 1)),
+                areas = listOf(HaArea("kitchen", "Kitchen", "ground"), HaArea("living_room", "Living room", "ground")),
             ),
             onQueryChange = {},
             onDomainFilterChange = {},
+            onFloorFilterChange = {},
+            onAreaFilterChange = {},
             onAdd = {},
             onRemove = {},
             onLabelChange = { _, _ -> },

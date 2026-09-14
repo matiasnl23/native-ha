@@ -4,6 +4,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardConfigStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardTile
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardConfigStore
 import com.matiasnl.hakiosk.data.ha.HaEntity
+import com.matiasnl.hakiosk.data.ha.HaRegistry
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
@@ -226,5 +227,157 @@ class EditorViewModelTest {
         configStore.release()
 
         assertEquals(listOf("light.living_room"), viewModel.uiState.value.currentTiles.map { it.entityId })
+    }
+
+    // sampleRegistry(): floors "ground" (level 0) and "first" (level 1); areas entrance/kitchen/
+    // living_room on "ground" and bedroom (empty) on "first"; sensor.outdoor_temperature unassigned.
+    private fun editorWithSampleRegistry(): EditorViewModel =
+        EditorViewModel(FakeHaRepository(), InMemoryDashboardConfigStore())
+
+    @Test
+    fun `floor filter matches entities whose area is on that floor`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onFloorFilterChange("ground")
+
+        assertEquals(
+            setOf("light.living_room", "light.kitchen", "switch.coffee_maker", "camera.front_door", "scene.movie_night"),
+            viewModel.uiState.value.availableEntities.map { it.entityId }.toSet(),
+        )
+    }
+
+    @Test
+    fun `floor with only empty areas yields no available entities`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onFloorFilterChange("first")
+
+        assertTrue(viewModel.uiState.value.availableEntities.isEmpty())
+    }
+
+    @Test
+    fun `area choices are restricted to the selected floor`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onFloorFilterChange("ground")
+        assertEquals(
+            setOf("entrance", "kitchen", "living_room"),
+            viewModel.uiState.value.areas.map { it.areaId }.toSet(),
+        )
+
+        viewModel.onFloorFilterChange("first")
+        assertEquals(setOf("bedroom"), viewModel.uiState.value.areas.map { it.areaId }.toSet())
+
+        viewModel.onFloorFilterChange(null)
+        assertEquals(
+            setOf("bedroom", "entrance", "kitchen", "living_room"),
+            viewModel.uiState.value.areas.map { it.areaId }.toSet(),
+        )
+    }
+
+    @Test
+    fun `area filter narrows to that area's entities`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onAreaFilterChange("kitchen")
+
+        assertEquals(
+            setOf("light.kitchen", "switch.coffee_maker"),
+            viewModel.uiState.value.availableEntities.map { it.entityId }.toSet(),
+        )
+    }
+
+    @Test
+    fun `no-area filter matches only unassigned entities`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onAreaFilterChange(EditorViewModel.NO_AREA_ID)
+
+        assertEquals(
+            listOf("sensor.outdoor_temperature"),
+            viewModel.uiState.value.availableEntities.map { it.entityId },
+        )
+    }
+
+    @Test
+    fun `floor area domain and search filters combine with AND`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onFloorFilterChange("ground")
+        viewModel.onAreaFilterChange("kitchen")
+        viewModel.onDomainFilterChange("switch")
+        viewModel.onQueryChange("coffee")
+
+        assertEquals(
+            listOf("switch.coffee_maker"),
+            viewModel.uiState.value.availableEntities.map { it.entityId },
+        )
+
+        // Narrowing the search further to something that doesn't match empties the result.
+        viewModel.onQueryChange("nonexistent")
+        assertTrue(viewModel.uiState.value.availableEntities.isEmpty())
+    }
+
+    @Test
+    fun `selecting a floor clears an area selection that does not belong to it`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onAreaFilterChange("kitchen")
+        viewModel.onFloorFilterChange("first")
+
+        assertNull(viewModel.uiState.value.areaFilter)
+    }
+
+    @Test
+    fun `selecting a floor keeps an area selection that belongs to it`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onAreaFilterChange("kitchen")
+        viewModel.onFloorFilterChange("ground")
+
+        assertEquals("kitchen", viewModel.uiState.value.areaFilter)
+    }
+
+    @Test
+    fun `selecting a floor clears a no-area selection`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onAreaFilterChange(EditorViewModel.NO_AREA_ID)
+        viewModel.onFloorFilterChange("ground")
+
+        assertNull(viewModel.uiState.value.areaFilter)
+    }
+
+    @Test
+    fun `available rows carry area and floor names, absent for unassigned entities`() = runTest {
+        val viewModel = editorWithSampleRegistry()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        val kitchenRow = viewModel.uiState.value.availableEntities.first { it.entityId == "light.kitchen" }
+        assertEquals("Kitchen", kitchenRow.areaName)
+        assertEquals("Ground floor", kitchenRow.floorName)
+
+        val sensorRow = viewModel.uiState.value.availableEntities.first { it.entityId == "sensor.outdoor_temperature" }
+        assertNull(sensorRow.areaName)
+        assertNull(sensorRow.floorName)
+    }
+
+    @Test
+    fun `floors and areas are empty when the registry has none`() = runTest {
+        val repository = FakeHaRepository(initialRegistry = HaRegistry())
+        val viewModel = EditorViewModel(repository, InMemoryDashboardConfigStore())
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertTrue(viewModel.uiState.value.floors.isEmpty())
+        assertTrue(viewModel.uiState.value.areas.isEmpty())
     }
 }

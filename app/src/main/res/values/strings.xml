@@ -51,6 +51,11 @@
     <string name="editor_add_entities">Agregar entidades</string>
     <string name="editor_search_placeholder">Buscar por nombre o entity_id</string>
     <string name="editor_filter_all">Todas</string>
+    <string name="editor_filter_all_floors">Todos los pisos</string>
+    <string name="editor_filter_all_areas">Todas las áreas</string>
+    <string name="editor_filter_no_area">Sin área</string>
+    <string name="editor_filters_show">Mostrar filtros</string>
+    <string name="editor_filters_hide">Ocultar filtros</string>
     <string name="editor_add">Agregar</string>
     <string name="editor_already_added">Ya agregada</string>
     <string name="editor_no_results">No se encontraron entidades</string>
