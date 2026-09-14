@@ -38,11 +38,10 @@ import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
  * Owns its own scrollable [LazyColumn] for the results, so [modifier] should give it a bounded
  * height (e.g. `Modifier.fillMaxSize()`) and it must never be placed inside another scrollable
  * container (another `LazyColumn`, a `Column.verticalScroll`, etc.) — nesting same-orientation
- * scrollables breaks measurement/gestures. This is the version stage 3 should use inside a
- * `ModalBottomSheet`/`Dialog` for the "add tile" flow, sized to fill the sheet height.
+ * scrollables breaks measurement/gestures. The dashboard's add-tile modal uses it this way, sized
+ * to fill the modal's height.
  *
- * To embed the picker inside a screen that already owns a `LazyColumn` (as
- * [EditorScreen][com.matiasnl.hakiosk.ui.editor.EditorScreen] does), use the [entityPickerItems]
+ * To embed the picker inside a screen that already owns a `LazyColumn`, use the [entityPickerItems]
  * extension instead and skip this composable entirely.
  */
 @Composable

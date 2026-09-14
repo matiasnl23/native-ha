@@ -35,7 +35,7 @@ class EntityPickerStateTest {
 
     // EntityPickerState.uiState is built with stateIn(scope, ...): the sharing coroutine that
     // actually runs the combine() pipeline lives in the scope passed to the constructor, mirroring
-    // how EditorViewModel passes viewModelScope (Dispatchers.Main.immediate) in production. Give it
+    // how DashboardViewModel passes viewModelScope (Dispatchers.Main.immediate) in production. Give it
     // an unconfined Main dispatcher here so filter/query changes are reflected in uiState.value
     // synchronously, without a manual advanceUntilIdle() after every intent call.
     @get:Rule
