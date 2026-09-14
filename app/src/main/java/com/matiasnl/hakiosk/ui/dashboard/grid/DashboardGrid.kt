@@ -7,11 +7,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -24,6 +28,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.flow.drop
 
 object DashboardGridDefaults {
     /** Space between cells and around the grid's outer edge. */
@@ -76,6 +81,7 @@ fun <T> DashboardGrid(
     gutter: Dp = DashboardGridDefaults.Gutter,
     draggableCount: Int = 0,
     onMove: ((from: Int, to: Int) -> Unit)? = null,
+    onDragActiveChange: ((active: Boolean) -> Unit)? = null,
     cellContent: @Composable (item: T, placement: GridPlacement, isVisible: Boolean) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -106,6 +112,7 @@ fun <T> DashboardGrid(
         }
         GridMotionDriver(motion)
         GridAutoscrollDriver(reorder, scrollState, maxSpeedPx)
+        GridDragActiveReporter(reorder, onDragActiveChange)
 
         val gestures = if (onMove != null) Modifier.pointerInput(reorder) { detectReorderGestures(reorder) } else Modifier
 
@@ -139,6 +146,22 @@ fun <T> DashboardGrid(
                 }
             }
         }
+    }
+}
+
+/**
+ * Reports drag start/end through [onDragActiveChange] (e.g. so a parent pager can refuse to switch
+ * pages mid-drag). Observes the drag state in a coroutine, so a flip never recomposes the grid. A grid
+ * leaving composition mid-drag reports the end too.
+ */
+@Composable
+private fun <T> GridDragActiveReporter(reorder: GridReorderState<T>, onDragActiveChange: ((Boolean) -> Unit)?) {
+    val latest by rememberUpdatedState(onDragActiveChange)
+    LaunchedEffect(reorder) {
+        snapshotFlow { reorder.draggedKey != null }.drop(1).collect { latest?.invoke(it) }
+    }
+    DisposableEffect(reorder) {
+        onDispose { if (reorder.draggedKey != null) latest?.invoke(false) }
     }
 }
 

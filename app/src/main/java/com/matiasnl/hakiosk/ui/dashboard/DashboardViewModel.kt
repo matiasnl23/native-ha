@@ -265,6 +265,9 @@ class DashboardViewModel(
     /** Null until the persisted last view has been read. */
     private val selection = MutableStateFlow<ViewSelection?>(null)
 
+    /** True while the edited page's grid has a tile lifted; main thread only. */
+    private var isDragActive = false
+
     /** View id the preferences store holds (or is about to), to skip redundant writes. */
     private var persistedLastViewId: String? = null
 
@@ -354,12 +357,14 @@ class DashboardViewModel(
         if (original != null && editingViewId != null && original.views.any { it.id == editingViewId }) {
             select(editingViewId)
         }
+        isDragActive = false
         editController.cancel()
     }
 
     /** Persists the working copy in one store update, exits edit mode and stays on the edited view. */
     fun doneEditMode() {
         val editingViewId = editController.state.value.takeIf { it.isEditing }?.editingViewId ?: return
+        isDragActive = false
         viewModelScope.launch {
             // Selecting first means no frame falls back to another page once the edit state resets.
             select(editingViewId)
@@ -369,6 +374,20 @@ class DashboardViewModel(
                 },
             )
         }
+    }
+
+    /**
+     * Edits another view of the working copy; the screen scrolls the pager to it. Refused while a
+     * tile drag is in progress, so a drag never continues on a different view's grid.
+     */
+    fun selectEditingView(viewId: String) {
+        if (isDragActive) return
+        editController.selectView(viewId)
+    }
+
+    /** The edited page's grid reports when a tile is lifted (true) and dropped (false). */
+    fun setDragActive(active: Boolean) {
+        isDragActive = active && editController.state.value.isEditing
     }
 
     fun addEntityTile(entityId: String) = editController.addEntityTile(entityId)

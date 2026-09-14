@@ -49,8 +49,8 @@ data class DashboardEditState(
 /**
  * Owns the working copy of the dashboard layout while the dashboard is in edit mode.
  *
- * [enter] snapshots the layout passed to it (the dashboard shows only its first view for now, so the
- * caller decides which view id is being edited). Every mutator below applies to the working copy
+ * [enter] snapshots the layout passed to it and starts on the view id the caller passes (the view the
+ * dashboard is showing); [selectView] switches the edited view later. Every mutator below applies to the working copy
  * only; nothing reaches [layoutStore] until [done], which writes the working copy in a single
  * [DashboardLayoutStore.update] call and exits edit mode. [cancel] discards the working copy without
  * writing anything.
@@ -69,6 +69,17 @@ class DashboardEditController(
     /** Snapshots [layout] as the working copy and enters edit mode on [viewId]. */
     fun enter(layout: DashboardLayout, viewId: String) {
         _state.value = DashboardEditState(isEditing = true, editingViewId = viewId, original = layout, working = layout)
+    }
+
+    /**
+     * Switches which view of the working copy is being edited; the tile ops, the "＋" tile and
+     * [DashboardEditState.linkTargets] follow it. Ids not in the working copy are ignored.
+     */
+    fun selectView(viewId: String) {
+        _state.update { state ->
+            val working = state.working ?: return@update state
+            if (working.views.none { it.id == viewId }) state else state.copy(editingViewId = viewId)
+        }
     }
 
     /** Discards the working copy and exits edit mode. */

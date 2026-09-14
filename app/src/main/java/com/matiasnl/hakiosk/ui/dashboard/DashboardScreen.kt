@@ -6,6 +6,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -24,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -122,6 +125,8 @@ fun DashboardScreen(
         onTileClick = viewModel::onTileClick,
         onPageSettled = viewModel::onPageSettled,
         onViewLinkClick = viewModel::onViewLinkClick,
+        onSelectEditingView = viewModel::selectEditingView,
+        onDragActiveChange = viewModel::setDragActive,
         onOpenSettings = onOpenSettings,
         onEnterEdit = viewModel::enterEditMode,
         onRequestCancelEdit = requestCancelEdit,
@@ -263,6 +268,8 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onPageSettled: (viewId: String) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
+    onSelectEditingView: (viewId: String) -> Unit,
+    onDragActiveChange: (active: Boolean) -> Unit,
     onOpenSettings: () -> Unit,
     onEnterEdit: () -> Unit,
     onRequestCancelEdit: () -> Unit,
@@ -310,6 +317,13 @@ private fun DashboardContent(
                     onOpenSettings = onOpenSettings,
                 )
             }
+            if (uiState.isEditing && uiState.pages.size > 1) {
+                EditViewChips(
+                    pages = uiState.pages,
+                    editedPage = uiState.currentPage,
+                    onSelect = onSelectEditingView,
+                )
+            }
             if (pagerState == null) return@Column
 
             val isConnected = uiState.connectionState is HaConnectionState.Connected
@@ -339,6 +353,7 @@ private fun DashboardContent(
                     onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
                     onMoveTile = onMoveTile,
+                    onDragActiveChange = onDragActiveChange,
                     onEditTile = onEditTile,
                     onAddTile = onAddTile,
                     cameraThumbnail = cameraThumbnail,
@@ -401,6 +416,7 @@ private fun DashboardPage(
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
+    onDragActiveChange: (active: Boolean) -> Unit,
     onEditTile: (tileId: String) -> Unit,
     onAddTile: () -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
@@ -420,6 +436,7 @@ private fun DashboardPage(
         // Real tiles (spacers and view links included) are draggable; the trailing "＋" isn't.
         draggableCount = if (isEditedPage) page.tiles.count { it !is AddTileUiState } else 0,
         onMove = if (isEditedPage) onMoveTile else null,
+        onDragActiveChange = if (isEditedPage) onDragActiveChange else null,
     ) { tile, placement, isVisible ->
         // Cameras poll only when on screen AND on the settled page: never on a neighbour during or after a swipe.
         val isActive = isVisible && isSettled.value
@@ -453,6 +470,34 @@ private fun DashboardPage(
                 )
                 is AddTileUiState -> Box(Modifier) // Never appears outside edit mode.
             }
+        }
+    }
+}
+
+/**
+ * Edit mode's way to change views (swiping is off while editing): one chip per view of the working
+ * copy, the edited one selected. A tap asks the ViewModel to edit that view, which it refuses mid-drag.
+ */
+@Composable
+private fun EditViewChips(
+    pages: List<DashboardPageUi>,
+    editedPage: Int,
+    onSelect: (viewId: String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        pages.forEachIndexed { index, page ->
+            FilterChip(
+                selected = index == editedPage,
+                onClick = { if (index != editedPage) onSelect(page.viewId) },
+                label = { Text(page.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
         }
     }
 }
@@ -909,6 +954,8 @@ private fun DashboardPreview() {
             onRequestCancelEdit = {},
             onDoneEdit = {},
             onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
@@ -953,6 +1000,8 @@ private fun DashboardMultiViewPreview() {
             onRequestCancelEdit = {},
             onDoneEdit = {},
             onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
@@ -980,6 +1029,8 @@ private fun DashboardEmptyPreview() {
             onRequestCancelEdit = {},
             onDoneEdit = {},
             onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},
@@ -1019,6 +1070,8 @@ private fun DashboardEditModePreview() {
             onRequestCancelEdit = {},
             onDoneEdit = {},
             onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
             onEditTile = {},
             onAddTile = {},
             onOpenGridSettings = {},

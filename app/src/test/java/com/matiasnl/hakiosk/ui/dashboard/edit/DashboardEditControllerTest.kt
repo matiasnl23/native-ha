@@ -59,6 +59,47 @@ class DashboardEditControllerTest {
     }
 
     @Test
+    fun `selectView switches the edited view, its link targets and where tiles go, and ignores unknown ids`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.selectView("other")
+        controller.selectView("nope")
+        controller.addSpacerTile()
+
+        val state = controller.state.value
+        assertEquals("other", state.editingViewId)
+        assertEquals(listOf(LinkTargetOption("main", "Principal")), state.linkTargets)
+        assertEquals(1, state.working!!.views[1].tiles.size)
+        assertEquals(2, state.working!!.views[0].tiles.size)
+    }
+
+    @Test
+    fun `selectView outside edit mode is a no-op`() {
+        val (controller, _, _) = controller()
+
+        controller.selectView("other")
+
+        assertNull(controller.state.value.editingViewId)
+    }
+
+    @Test
+    fun `done waits for the persisted echo before leaving edit mode`() = runTest {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+        controller.addSpacerTile()
+        var stillEditingWhileAwaiting = false
+
+        controller.done(awaitPersisted = { written ->
+            stillEditingWhileAwaiting = controller.state.value.isEditing
+            assertEquals(written, store.layout.value)
+        })
+
+        assertTrue(stillEditingWhileAwaiting)
+        assertFalse(controller.state.value.isEditing)
+    }
+
+    @Test
     fun `add entity, spacer and link tiles append to the working copy`() {
         val (controller, _, _) = controller()
         controller.enter(layout, "main")

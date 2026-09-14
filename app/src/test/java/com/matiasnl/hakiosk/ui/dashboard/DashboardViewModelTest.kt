@@ -98,6 +98,17 @@ private class NotYetLoadedLayoutStore : DashboardLayoutStore {
     }
 }
 
+/** In-memory store that counts [update] calls, to assert Listo writes exactly once. */
+private class CountingLayoutStore(initial: DashboardLayout) : DashboardLayoutStore {
+    private val delegate = InMemoryDashboardLayoutStore(initial)
+    var updates = 0
+    override val layout: StateFlow<DashboardLayout> = delegate.layout
+    override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {
+        updates++
+        delegate.update(transform)
+    }
+}
+
 class DashboardViewModelTest {
 
     @get:Rule
@@ -721,6 +732,92 @@ class DashboardViewModelTest {
         assertEquals(listOf("b-spacer", "b-link", "id-1", AddTileUiState.ID), state.tiles.map { it.id })
         assertFalse(state.pages[0].tiles.any { it is AddTileUiState })
         assertEquals(listOf(LinkTargetOption("v1", "Principal"), LinkTargetOption("v3", "Vacía")), state.linkTargets)
+    }
+
+    @Test
+    fun `switching the edited view moves the current page and the add tile, and tile ops follow it`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.selectEditingView("v3")
+        viewModel.addSpacerTile()
+
+        val state = viewModel.uiState.value
+        assertEquals(2, state.currentPage)
+        assertEquals(listOf("id-1", AddTileUiState.ID), state.pages[2].tiles.map { it.id })
+        assertFalse(state.pages[0].tiles.any { it is AddTileUiState })
+        assertEquals(listOf("v1", "v2"), state.linkTargets.map { it.viewId })
+    }
+
+    @Test
+    fun `the edited view cannot change while a tile drag is in progress`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+
+        viewModel.setDragActive(true)
+        viewModel.selectEditingView("v2")
+        assertEquals(0, viewModel.uiState.value.currentPage)
+
+        viewModel.setDragActive(false)
+        viewModel.selectEditingView("v2")
+        assertEquals(1, viewModel.uiState.value.currentPage)
+    }
+
+    @Test
+    fun `entering edit mode again while editing keeps the working copy`() = runTest {
+        val (viewModel, _, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        viewModel.addSpacerTile()
+
+        viewModel.enterEditMode()
+
+        assertTrue(viewModel.uiState.value.isDirty)
+    }
+
+    @Test
+    fun `Listo persists once and stays on the edited view`() = runTest {
+        val store = CountingLayoutStore(threeViewLayout())
+        val preferences = InMemoryDashboardViewPreferencesStore()
+        val viewModel = DashboardViewModel(
+            FakeHaRepository(emptyList()),
+            store,
+            FakeDashboardIdProvider(),
+            viewPreferencesStore = preferences,
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        viewModel.enterEditMode()
+        viewModel.selectEditingView("v2")
+        viewModel.addSpacerTile()
+
+        viewModel.doneEditMode()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.isEditing)
+        assertEquals(1, store.updates)
+        assertEquals(1, state.currentPage)
+        assertEquals(3, store.layout.value.views[1].tiles.size)
+        advanceTimeBy(LAST_VIEW_SAVE_DEBOUNCE_MILLIS + 1)
+        assertEquals("v2", preferences.preferences.value.lastViewId)
+    }
+
+    @Test
+    fun `Cancelar discards the working copy and stays on the edited view`() = runTest {
+        val (viewModel, layoutStore, _) = multiViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val original = layoutStore.layout.value
+        viewModel.enterEditMode()
+        viewModel.selectEditingView("v3")
+        viewModel.addSpacerTile()
+
+        viewModel.cancelEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(original, layoutStore.layout.value)
+        assertEquals(2, viewModel.uiState.value.currentPage)
+        assertTrue(viewModel.uiState.value.pages[2].tiles.isEmpty())
     }
 
     @Test
