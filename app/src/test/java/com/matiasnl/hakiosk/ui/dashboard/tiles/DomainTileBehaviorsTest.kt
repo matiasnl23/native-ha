@@ -1,10 +1,13 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import com.matiasnl.hakiosk.ui.dashboard.tiles.light.kelvinToColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -61,6 +64,22 @@ class DomainTileBehaviorsTest {
             TileSummary.Light(isOn = false, brightnessPercent = null),
             light.summarize(testEntity("light.a", "off", """{"supported_color_modes":["brightness"]}""")),
         )
+    }
+
+    @Test
+    fun `light summary carries the current color only while on`() {
+        val light = DomainTileBehaviors.forDomain("light")
+
+        assertEquals(
+            Color.hsv(120f, 0.5f, 1f),
+            (light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["hs"],"color_mode":"hs","brightness":255,"hs_color":[120.0,50.0]}""")) as TileSummary.Light).color,
+        )
+        assertEquals(
+            kelvinToColor(2700),
+            (light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["color_temp"],"color_mode":"color_temp","brightness":255,"color_temp_kelvin":2700,"hs_color":[28.0,65.0]}""")) as TileSummary.Light).color,
+        )
+        assertNull((light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["brightness"],"brightness":255}""")) as TileSummary.Light).color)
+        assertNull((light.summarize(testEntity("light.a", "off", """{"supported_color_modes":["hs"],"hs_color":[120.0,50.0]}""")) as TileSummary.Light).color)
     }
 
     @Test

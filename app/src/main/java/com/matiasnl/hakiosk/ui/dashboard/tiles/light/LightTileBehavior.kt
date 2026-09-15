@@ -1,7 +1,9 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles.light
 
+import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.domain.LightCapabilities
+import com.matiasnl.hakiosk.data.ha.domain.LightColorMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetails
@@ -19,6 +21,23 @@ object LightTileBehavior : DomainTileBehavior {
         val percent = capabilities.brightnessPercent
             ?.takeIf { capabilities.isOn && capabilities.supportsBrightness }
             ?.coerceAtLeast(1)
-        return TileSummary.Light(isOn = capabilities.isOn, brightnessPercent = percent)
+        val color = if (capabilities.isOn) currentColor(capabilities) else null
+        return TileSummary.Light(isOn = capabilities.isOn, brightnessPercent = percent, color = color)
+    }
+
+    /**
+     * HA also reports an `hs_color` derived from the temperature while in `color_temp` mode, so the
+     * Kelvin value is checked first there: it maps to a truer white than the derived hue.
+     */
+    private fun currentColor(capabilities: LightCapabilities): Color? {
+        val kelvin = capabilities.colorTempKelvin
+        val hue = capabilities.hue
+        val saturation = capabilities.saturation
+        return when {
+            capabilities.colorMode == LightColorMode.COLOR_TEMP && kelvin != null -> kelvinToColor(kelvin)
+            hue != null && saturation != null -> Color.hsv(hue.toFloat(), (saturation / 100.0).toFloat(), 1f)
+            kelvin != null -> kelvinToColor(kelvin)
+            else -> null
+        }
     }
 }

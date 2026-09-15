@@ -1,17 +1,20 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LocalContentColor
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import com.matiasnl.hakiosk.R
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.TileColors
@@ -32,43 +35,84 @@ fun summaryStateText(summary: TileSummary): String? = when (summary) {
     is TileSummary.Alarm -> alarmStateText(summary.state)
 }
 
-/** The compact visual under the state line (e.g. a light's brightness bar), or nothing. */
-@Composable
-fun TileSummaryVisual(summary: TileSummary, modifier: Modifier = Modifier) {
-    when (summary) {
-        TileSummary.Default, is TileSummary.Alarm -> Unit
-        is TileSummary.Light -> if (summary.isOn && summary.brightnessPercent != null) {
-            LevelBar(fraction = summary.brightnessPercent / 100f, modifier = modifier)
-        }
-    }
-}
-
 /** The tile's own container/content colors (e.g. an alarm's state color), or null for the default on/off colors. */
 @Composable
 fun summaryTileColors(summary: TileSummary): TileColors? = when (summary) {
     is TileSummary.Alarm -> alarmColors(summary.state.tone)
-    TileSummary.Default, is TileSummary.Light -> null
+    is TileSummary.Light -> if (summary.isOn) lightFillColors(summary.color).let { TileColors(it.track, it.content) } else null
+    TileSummary.Default -> null
 }
 
-/** Drawn behind the tile's content: a pulse while an alarm is triggered, otherwise nothing (no animation). */
+/**
+ * Drawn behind the tile's content: a pulse while an alarm is triggered, or an on light's brightness as a
+ * fill over the tile (the whole tile when it has no brightness); otherwise nothing.
+ */
 @Composable
 fun TileSummaryBackground(summary: TileSummary, modifier: Modifier = Modifier) {
-    if (summary is TileSummary.Alarm && summary.state == AlarmPanelState.TRIGGERED) TriggeredPulse(modifier)
-}
-
-private val LevelBarShape = RoundedCornerShape(2.dp)
-
-/** A thin bar filled to [fraction] in the current content color. */
-@Composable
-fun LevelBar(fraction: Float, modifier: Modifier = Modifier) {
-    val color = LocalContentColor.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .clip(LevelBarShape)
-            .background(color.copy(alpha = 0.25f)),
-    ) {
-        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxHeight().background(color))
+    when (summary) {
+        is TileSummary.Alarm -> if (summary.state == AlarmPanelState.TRIGGERED) TriggeredPulse(modifier)
+        is TileSummary.Light -> if (summary.isOn) {
+            LevelFill(
+                fraction = summary.brightnessPercent?.div(100f) ?: 1f,
+                color = lightFillColors(summary.color).fill,
+                modifier = modifier,
+            )
+        }
+        TileSummary.Default -> Unit
     }
 }
+
+/**
+ * Fills [fraction] of the available width with [color], from the start edge. The animated width is only
+ * read while drawing, so a brightness change redraws without recomposing.
+ */
+@Composable
+private fun LevelFill(fraction: Float, color: Color, modifier: Modifier = Modifier) {
+    val animated = animateFloatAsState(fraction.coerceIn(0f, 1f), label = "levelFill")
+    Spacer(
+        modifier.drawBehind {
+            val width = size.width * animated.value
+            val left = if (layoutDirection == LayoutDirection.Rtl) size.width - width else 0f
+            drawRect(color, topLeft = Offset(left, 0f), size = Size(width, size.height))
+        },
+    )
+}
+
+@Immutable
+private data class LightFillColors(val track: Color, val fill: Color, val content: Color)
+
+/** HA's own active-light amber, for lights that report no color (brightness-only or on/off). */
+private val DefaultLightTint = Color(0xFFFFA000)
+
+/**
+ * The light's [tint] blended over the theme's tile surface: a faint track and a stronger brightness
+ * fill. The text keeps the theme's own color, so the fill is backed off toward the surface until that
+ * text stays readable over it (dark text needs a light enough fill, light text a dark enough one).
+ */
+@Composable
+private fun lightFillColors(tint: Color?): LightFillColors {
+    val scheme = MaterialTheme.colorScheme
+    val base = scheme.surfaceVariant
+    val content = scheme.onSurfaceVariant
+    return remember(tint, base, content) {
+        val color = tint ?: DefaultLightTint
+        val darkText = content.luminance() < 0.5f
+        var amount = MAX_FILL_AMOUNT
+        var fill = lerp(base, color, amount)
+        while (amount > MIN_FILL_AMOUNT && !readable(fill, darkText)) {
+            amount -= FILL_AMOUNT_STEP
+            fill = lerp(base, color, amount)
+        }
+        LightFillColors(track = lerp(base, color, amount * TRACK_TO_FILL), fill = fill, content = content)
+    }
+}
+
+private fun readable(background: Color, darkText: Boolean): Boolean =
+    if (darkText) background.luminance() >= MIN_LUMINANCE_UNDER_DARK_TEXT else background.luminance() <= MAX_LUMINANCE_UNDER_LIGHT_TEXT
+
+private const val MAX_FILL_AMOUNT = 0.7f
+private const val MIN_FILL_AMOUNT = 0.3f
+private const val FILL_AMOUNT_STEP = 0.05f
+private const val TRACK_TO_FILL = 0.35f
+private const val MIN_LUMINANCE_UNDER_DARK_TEXT = 0.3f
+private const val MAX_LUMINANCE_UNDER_LIGHT_TEXT = 0.2f

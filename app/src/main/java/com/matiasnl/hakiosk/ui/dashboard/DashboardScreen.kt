@@ -81,7 +81,6 @@ import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
-import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryVisual
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryTileColors
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
 import androidx.compose.material3.CardColors
@@ -764,10 +763,7 @@ private fun DashboardTileContent(tile: DashboardTileUiState, placement: GridPlac
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Column {
-            Text(text = stateText, style = stateStyle(placement), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!dimmed) TileSummaryVisual(tile.summary, Modifier.padding(top = 6.dp))
-        }
+        Text(text = stateText, style = stateStyle(placement), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -1085,8 +1081,9 @@ private fun DashboardPreview() {
 @Composable
 private fun DashboardSmartTilesPreview() {
     val tiles = listOf(
-        previewEntity("light.living", "Living", "on", isOn = true, colSpan = 2, rowSpan = 2, summary = TileSummary.Light(true, 60)),
+        previewEntity("light.living", "Living", "on", isOn = true, colSpan = 2, rowSpan = 2, summary = TileSummary.Light(true, 60, Color.hsv(210f, 0.8f, 1f))),
         previewEntity("light.hall", "Pasillo", "on", isOn = true, summary = TileSummary.Light(true, 15)),
+        previewEntity("light.desk", "Escritorio", "on", isOn = true, summary = TileSummary.Light(true, 80, Color.hsv(30f, 0.6f, 1f))),
         previewEntity("light.lamp", "Lámpara", "on", isOn = true, summary = TileSummary.Light(true, null)),
         previewEntity("light.bedroom", "Dormitorio", "off", summary = TileSummary.Light(false, null)),
         previewEntity("switch.coffee_maker", "Cafetera", "off"),
