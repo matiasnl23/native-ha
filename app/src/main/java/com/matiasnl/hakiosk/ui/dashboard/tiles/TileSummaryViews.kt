@@ -22,6 +22,9 @@ import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.TriggeredPulse
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmColors
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmStateText
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.tone
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.climateStateText
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.isEmphasized
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.tint
 
 /** The localized state line for [summary], or null to fall back to the raw state. */
 @Composable
@@ -33,13 +36,18 @@ fun summaryStateText(summary: TileSummary): String? = when (summary) {
         else -> stringResource(R.string.light_state_on)
     }
     is TileSummary.Alarm -> alarmStateText(summary.state)
+    is TileSummary.Climate -> climateStateText(summary)
 }
 
 /** The tile's own container/content colors (e.g. an alarm's state color), or null for the default on/off colors. */
 @Composable
 fun summaryTileColors(summary: TileSummary): TileColors? = when (summary) {
     is TileSummary.Alarm -> alarmColors(summary.state.tone)
-    is TileSummary.Light -> if (summary.isOn) lightFillColors(summary.color).let { TileColors(it.track, it.content) } else null
+    is TileSummary.Light -> if (summary.isOn) tintColors(summary.color ?: DefaultLightTint).let { TileColors(it.track, it.content) } else null
+    is TileSummary.Climate -> summary.tint()?.let { tint ->
+        val colors = tintColors(tint)
+        TileColors(if (summary.isEmphasized) colors.fill else colors.track, colors.content)
+    }
     TileSummary.Default -> null
 }
 
@@ -54,11 +62,11 @@ fun TileSummaryBackground(summary: TileSummary, modifier: Modifier = Modifier) {
         is TileSummary.Light -> if (summary.isOn) {
             LevelFill(
                 fraction = summary.brightnessPercent?.div(100f) ?: 1f,
-                color = lightFillColors(summary.color).fill,
+                color = tintColors(summary.color ?: DefaultLightTint).fill,
                 modifier = modifier,
             )
         }
-        TileSummary.Default -> Unit
+        is TileSummary.Climate, TileSummary.Default -> Unit
     }
 }
 
@@ -79,31 +87,30 @@ private fun LevelFill(fraction: Float, color: Color, modifier: Modifier = Modifi
 }
 
 @Immutable
-private data class LightFillColors(val track: Color, val fill: Color, val content: Color)
+private data class TintColors(val track: Color, val fill: Color, val content: Color)
 
 /** HA's own active-light amber, for lights that report no color (brightness-only or on/off). */
 private val DefaultLightTint = Color(0xFFFFA000)
 
 /**
- * The light's [tint] blended over the theme's tile surface: a faint track and a stronger brightness
- * fill. The text keeps the theme's own color, so the fill is backed off toward the surface until that
- * text stays readable over it (dark text needs a light enough fill, light text a dark enough one).
+ * [tint] blended over the theme's tile surface: a faint track and a stronger fill. The text keeps the
+ * theme's own color, so the fill is backed off toward the surface until that text stays readable over it
+ * (dark text needs a light enough fill, light text a dark enough one).
  */
 @Composable
-private fun lightFillColors(tint: Color?): LightFillColors {
+private fun tintColors(tint: Color): TintColors {
     val scheme = MaterialTheme.colorScheme
     val base = scheme.surfaceVariant
     val content = scheme.onSurfaceVariant
     return remember(tint, base, content) {
-        val color = tint ?: DefaultLightTint
         val darkText = content.luminance() < 0.5f
         var amount = MAX_FILL_AMOUNT
-        var fill = lerp(base, color, amount)
+        var fill = lerp(base, tint, amount)
         while (amount > MIN_FILL_AMOUNT && !readable(fill, darkText)) {
             amount -= FILL_AMOUNT_STEP
-            fill = lerp(base, color, amount)
+            fill = lerp(base, tint, amount)
         }
-        LightFillColors(track = lerp(base, color, amount * TRACK_TO_FILL), fill = fill, content = content)
+        TintColors(track = lerp(base, tint, amount * TRACK_TO_FILL), fill = fill, content = content)
     }
 }
 

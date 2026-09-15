@@ -84,3 +84,40 @@ class OptimisticValue(
         held.value = false
     }
 }
+
+/**
+ * [OptimisticValue] for a discrete choice (e.g. a mode chip): [set] shows the chosen value right away,
+ * until the entity reports it ([confirm]), the command fails ([abandon]) or [timeoutMillis] pass.
+ */
+@Stable
+class OptimisticChoice<T : Any>(
+    private val scope: CoroutineScope,
+    private val timeoutMillis: Long = OPTIMISTIC_CONFIRM_TIMEOUT_MILLIS,
+) {
+    private val local = mutableStateOf<T?>(null)
+    private var timeout: Job? = null
+
+    /** The value to render: the chosen one while held, else [confirmed]. */
+    fun display(confirmed: T?): T? = local.value ?: confirmed
+
+    fun set(value: T) {
+        timeout?.cancel()
+        local.value = value
+        timeout = scope.launch {
+            delay(timeoutMillis)
+            local.value = null
+        }
+    }
+
+    /** The entity reported [confirmed]: stops holding once it matches the chosen value. */
+    fun confirm(confirmed: T?) {
+        if (confirmed != null && confirmed == local.value) abandon()
+    }
+
+    /** The command failed: follow the entity again. */
+    fun abandon() {
+        timeout?.cancel()
+        timeout = null
+        local.value = null
+    }
+}

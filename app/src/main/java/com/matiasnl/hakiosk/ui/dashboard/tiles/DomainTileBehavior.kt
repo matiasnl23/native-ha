@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.AlarmTileBehavior
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.LightTileBehavior
 
 /** What a tap on an entity tile does, once the domain and the tile's own preference are resolved. */
@@ -102,6 +103,7 @@ object DomainTileBehaviors {
         "script" to TurnOnTileBehavior,
         CAMERA_DOMAIN to CameraTileBehavior,
         "alarm_control_panel" to AlarmTileBehavior,
+        "climate" to ClimateTileBehavior,
     )
 
     fun forDomain(domain: String): DomainTileBehavior = byDomain[domain] ?: DefaultTileBehavior

@@ -2,6 +2,8 @@ package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import com.matiasnl.hakiosk.data.ha.domain.HvacAction
+import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 
 /**
  * A tile's domain-specific summary, derived once per entity state change by
@@ -26,4 +28,17 @@ sealed interface TileSummary {
 
     /** An alarm control panel: its state picks the tile's text and color. */
     data class Alarm(val state: AlarmPanelState) : TileSummary
+
+    /**
+     * A climate entity: [hvacMode] (null while unavailable/unknown) and [hvacAction] pick the text and tint.
+     * Either [targetTemperature] or the [targetTemperatureLow]..[targetTemperatureHigh] range is set, never both.
+     */
+    data class Climate(
+        val hvacMode: HvacMode?,
+        val hvacAction: HvacAction? = null,
+        val currentTemperature: Double? = null,
+        val targetTemperature: Double? = null,
+        val targetTemperatureLow: Double? = null,
+        val targetTemperatureHigh: Double? = null,
+    ) : TileSummary
 }

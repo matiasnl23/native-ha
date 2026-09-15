@@ -3,6 +3,8 @@ package com.matiasnl.hakiosk.ui.dashboard.tiles
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import com.matiasnl.hakiosk.data.ha.domain.HvacAction
+import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.kelvinToColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -94,6 +96,35 @@ class DomainTileBehaviorsTest {
         assertEquals(
             TileSummary.Alarm(AlarmPanelState.TRIGGERED),
             alarm.summarize(testEntity("alarm_control_panel.home", "triggered", """{"supported_features":3}""")),
+        )
+    }
+
+    @Test
+    fun `climate tiles open their panel on tap and summarize mode, reading and setpoint`() {
+        val climate = DomainTileBehaviors.forDomain("climate")
+
+        assertNotNull(climate.details)
+        assertFalse(climate.offersTapActionChoice)
+        assertEquals(TileAction.OPEN_DETAILS, climate.resolveTap(TileTapAction.TOGGLE))
+        assertEquals(
+            TileSummary.Climate(HvacMode.COOL, HvacAction.COOLING, currentTemperature = 24.5, targetTemperature = 22.0),
+            climate.summarize(
+                testEntity(
+                    "climate.living",
+                    "cool",
+                    """{"hvac_modes":["off","cool"],"current_temperature":24.5,"temperature":22,"hvac_action":"cooling","supported_features":1}""",
+                ),
+            ),
+        )
+        assertEquals(
+            TileSummary.Climate(HvacMode.HEAT_COOL, targetTemperatureLow = 20.0, targetTemperatureHigh = 24.0),
+            climate.summarize(
+                testEntity(
+                    "climate.hall",
+                    "heat_cool",
+                    """{"temperature":22,"target_temp_low":20,"target_temp_high":24,"supported_features":3}""",
+                ),
+            ),
         )
     }
 
