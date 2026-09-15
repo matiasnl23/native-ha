@@ -14,7 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -116,14 +116,23 @@ class WebSocketHaCameraSource internal constructor(
         return go2rtcClient.streams(config, clientId)
     }
 
-    // Contract placeholder: replaced by the go2rtc signaling client.
-
     override fun go2rtcWebRtcSession(
         entityId: String,
         stream: String,
         offerSdp: String,
         localCandidates: Flow<HaIceCandidate>,
-    ): Flow<HaWebRtcEvent> = flowOf(HaWebRtcEvent.Error("not_implemented", "go2rtc WebRTC is not available yet"))
+    ): Flow<HaWebRtcEvent> = flow {
+        val clientId = FrigateGo2rtcProtocol.clientId(entityId, entity(entityId)).getOrElse { error ->
+            emit(HaWebRtcEvent.Error(FrigateGo2rtcProtocol.CODE_NOT_FRIGATE_CAMERA, error.message ?: "Not a Frigate camera"))
+            return@flow
+        }
+        val config = configStore.config.first()
+        if (config == null) {
+            emit(HaWebRtcEvent.Error(HaRequestException.CODE_NOT_CONNECTED, NOT_CONFIGURED))
+            return@flow
+        }
+        emitAll(go2rtcClient.webRtcSession(config, clientId, stream, offerSdp, localCandidates))
+    }
 
     private suspend fun <T : Any> command(parse: (JsonElement) -> T?, message: (id: Int) -> JsonObject): Result<T> {
         val connection = activeConnection()
