@@ -54,7 +54,7 @@ class FrigateGo2rtcStreamsTest {
 
         assertEquals(listOf("alpha", "Back_Yard", "front door", "garage"), streams)
         val request = server.takeRequest()
-        assertEquals("/ha/api/frigate/frigate1/go2rtc/api/streams", request.path)
+        assertEquals("/ha/api/frigate/frigate1/go2rtc/streams", request.path)
         assertEquals("Bearer secret-token", request.getHeader("Authorization"))
     }
 
@@ -68,7 +68,7 @@ class FrigateGo2rtcStreamsTest {
 
         val missing = source.go2rtcStreams("camera.garage").exceptionOrNull() as HaHttpException
         assertEquals(404, missing.httpCode)
-        assertTrue(missing.message!!, missing.message!!.startsWith("Frigate integration proxy not found"))
+        assertTrue(missing.message!!, missing.message!!.startsWith("Frigate route not found"))
         val unauthorized = source.go2rtcStreams("camera.garage").exceptionOrNull() as HaHttpException
         assertEquals("Invalid access token (HTTP 401)", unauthorized.message)
         val forbidden = source.go2rtcStreams("camera.garage").exceptionOrNull() as HaHttpException

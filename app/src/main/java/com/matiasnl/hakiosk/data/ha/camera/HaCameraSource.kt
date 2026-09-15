@@ -57,7 +57,7 @@ interface HaCameraSource {
     /**
      * go2rtc stream names reachable through the Frigate integration for the Frigate camera behind
      * [entityId] (its `client_id` attribute selects the Frigate instance), sorted. Fails when the entity
-     * isn't a Frigate camera or the proxy can't be reached. Frigate integration v5.15.3+ with Frigate 0.18+.
+     * isn't a Frigate camera or the proxy can't be reached. Frigate integration v5.12+ with Frigate 0.17+.
      */
     suspend fun go2rtcStreams(entityId: String): Result<List<String>>
 

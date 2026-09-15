@@ -222,6 +222,6 @@ class FrigateGo2rtcClient(
 
         private const val NORMAL_CLOSURE = 1000
         private const val PROXY_NOT_FOUND =
-            "Frigate integration proxy not found; Frigate integration v5.15.3+ is required (HTTP 404)"
+            "Frigate route not found; the Frigate integration v5.12+ and Frigate 0.17+ are required (HTTP 404)"
     }
 }

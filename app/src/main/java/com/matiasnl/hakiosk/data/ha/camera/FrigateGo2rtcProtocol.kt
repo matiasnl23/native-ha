@@ -13,12 +13,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * Frigate go2rtc access through the Frigate HA integration's authenticated proxy (integration
- * v5.15.3+, Frigate 0.18+). Verified against frigate-hass-integration v5.15.6 `views.py`, Frigate
+ * v5.12+, Frigate 0.17+). Verified against frigate-hass-integration v5.15.6 `views.py`, Frigate
  * v0.18.0 nginx and go2rtc `api/ws`:
  *
  * - Frigate camera entities carry the `client_id` attribute (the Frigate MQTT client id; the literal
  *   `"None"` when MQTT has none) that selects the Frigate instance in proxy paths.
- * - `GET /api/frigate/<client_id>/go2rtc/api/streams` → Frigate `/api/go2rtc/streams`: a JSON object
+ * - `GET /api/frigate/<client_id>/go2rtc/streams` → Frigate `/api/go2rtc/streams`: a JSON object
  *   keyed by stream name.
  * - WebSocket `/api/frigate/<client_id>/webrtc/api/ws?src=<stream>` → Frigate `/live/webrtc/api/ws` →
  *   go2rtc `/api/ws`. Every frame is `{"type": ..., "value": ...}`: the client sends `webrtc/offer`
@@ -56,9 +56,15 @@ internal object FrigateGo2rtcProtocol {
         return Result.success(clientId)
     }
 
-    /** `<base>/api/frigate/<client_id>/go2rtc/api/streams`, keeping any base path prefix. */
+    /**
+     * `<base>/api/frigate/<client_id>/go2rtc/streams`, keeping any base path prefix. The integration maps
+     * `go2rtc/<path>` to Frigate's `api/go2rtc/<path>`, so this always reaches Frigate's own
+     * `/api/go2rtc/streams` (Frigate 0.17+). The `go2rtc/api/streams` form depends on the integration
+     * detecting Frigate 0.18 (v5.15.3+ and a migrated config version); otherwise it's forwarded to a
+     * route 0.18 removed and Frigate answers `{"detail":"Not Found"}`.
+     */
     fun streamsUrl(baseUrl: String, clientId: String): HttpUrl? =
-        proxyUrl(baseUrl, clientId)?.addPathSegments("go2rtc/api/streams")?.build()
+        proxyUrl(baseUrl, clientId)?.addPathSegments("go2rtc/streams")?.build()
 
     /**
      * `<base>/api/frigate/<client_id>/webrtc/api/ws?src=<stream>` as http(s); OkHttp upgrades it to
