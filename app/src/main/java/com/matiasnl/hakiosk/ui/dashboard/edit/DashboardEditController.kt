@@ -1,6 +1,7 @@
 package com.matiasnl.hakiosk.ui.dashboard.edit
 
 import com.matiasnl.hakiosk.data.dashboard.CELL_RANGE
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
@@ -191,6 +192,29 @@ class DashboardEditController(
         layout.updateTile(viewId, tileId) { tile ->
             when (val content = tile.content) {
                 is TileContent.Entity -> tile.copy(content = content.copy(style = style))
+                is TileContent.ViewLink, TileContent.Spacer -> tile
+            }
+        }
+    }
+
+    /**
+     * Sets an entity tile's camera options in the working copy; other tile types are left untouched.
+     * Stream names are trimmed (blank becomes null) and the refresh interval is coerced to at least
+     * [CameraTileOptions.MIN_THUMBNAIL_REFRESH_SECONDS]; an all-defaults (or null) result is stored as
+     * null, never as an explicit all-defaults object.
+     */
+    fun setCameraOptions(tileId: String, options: CameraTileOptions?) = mutate { layout, viewId ->
+        val normalized = options?.let {
+            it.copy(
+                focusStream = it.focusStream?.trim()?.ifEmpty { null },
+                thumbnailStream = it.thumbnailStream?.trim()?.ifEmpty { null },
+                thumbnailRefreshSeconds = it.thumbnailRefreshSeconds
+                    ?.coerceAtLeast(CameraTileOptions.MIN_THUMBNAIL_REFRESH_SECONDS),
+            )
+        }?.takeUnless { it.isDefault }
+        layout.updateTile(viewId, tileId) { tile ->
+            when (val content = tile.content) {
+                is TileContent.Entity -> tile.copy(content = content.copy(camera = normalized))
                 is TileContent.ViewLink, TileContent.Spacer -> tile
             }
         }

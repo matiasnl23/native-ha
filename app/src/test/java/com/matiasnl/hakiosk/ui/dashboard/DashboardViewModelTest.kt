@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.dashboard
 
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardTile
@@ -288,6 +289,33 @@ class DashboardViewModelTest {
 
         assertEquals(listOf(OpenCameraEvent("camera.front_door", "Entrada")), opened)
         assertEquals("idle", repository.entities.value.getValue("camera.front_door").state)
+    }
+
+    @Test
+    fun `tapping a camera with a focus stream opens it with that stream`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("camera.front_door", "idle", "Front door")))
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "view-1",
+                    name = "Principal",
+                    tiles = listOf(
+                        newDashboardTile(
+                            TileContent.Entity("camera.front_door", camera = CameraTileOptions(focusStream = "main")),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layout))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val opened = mutableListOf<OpenCameraEvent>()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.openCameraEvents.collect { opened += it } }
+        val tile = viewModel.uiState.value.entityTiles().single()
+
+        viewModel.onTileClick(tile)
+
+        assertEquals(listOf(OpenCameraEvent("camera.front_door", "Front door", "main")), opened)
     }
 
     @Test
@@ -727,6 +755,35 @@ class DashboardViewModelTest {
 
         viewModel.doneEditMode()
         assertEquals(TileStyle.QUICK_ADJUST, storedStyle())
+    }
+
+    @Test
+    fun `a camera options change goes to the working copy, Cancelar discards it and Listo persists it`() = runTest {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(id = "view-1", name = "Principal", tiles = listOf(newDashboardTile(TileContent.Entity("camera.front_door")))),
+            ),
+        )
+        val entities = listOf(entity("camera.front_door", "idle", "Front door"))
+        val (viewModel, layoutStore) = editingViewModel(layout, entities)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        fun storedCamera() = (layoutStore.layout.value.views.single().tiles.single().content as TileContent.Entity).camera
+
+        viewModel.enterEditMode()
+        val tileId = viewModel.uiState.value.entityTiles().single().id
+        val options = CameraTileOptions(focusStream = "main")
+        viewModel.setEditTileCameraOptions(tileId, options)
+
+        assertEquals(options, viewModel.uiState.value.entityTiles().single().camera)
+        assertEquals(null, storedCamera())
+
+        viewModel.cancelEditMode()
+        assertEquals(null, viewModel.uiState.value.entityTiles().single().camera)
+
+        viewModel.enterEditMode()
+        viewModel.setEditTileCameraOptions(tileId, options)
+        viewModel.doneEditMode()
+        assertEquals(options, storedCamera())
     }
 
     @Test

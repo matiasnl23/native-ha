@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.dashboard.edit
 
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardTile
@@ -226,6 +227,71 @@ class DashboardEditControllerTest {
         )
         assertEquals(TileContent.Spacer, working.views[0].tiles[1].content)
         assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `setCameraOptions stores trimmed streams, coerces the refresh interval and ignores non-entity tiles`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.setCameraOptions(
+            "a",
+            CameraTileOptions(focusStream = "  main  ", thumbnailStream = "   ", thumbnailRefreshSeconds = 1, thumbnailLive = true),
+        )
+        controller.setCameraOptions("b", CameraTileOptions(focusStream = "sub")) // A spacer has no camera options.
+
+        val working = controller.state.value.working!!
+        assertEquals(
+            TileContent.Entity(
+                "light.a",
+                camera = CameraTileOptions(
+                    focusStream = "main",
+                    thumbnailStream = null,
+                    thumbnailRefreshSeconds = CameraTileOptions.MIN_THUMBNAIL_REFRESH_SECONDS,
+                    thumbnailLive = true,
+                ),
+            ),
+            working.views[0].tiles[0].content,
+        )
+        assertEquals(TileContent.Spacer, working.views[0].tiles[1].content)
+        assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `setCameraOptions stores null (never an all-defaults object) for null or all-default options`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.setCameraOptions("a", CameraTileOptions(focusStream = "main"))
+        controller.setCameraOptions("a", CameraTileOptions())
+
+        assertEquals(
+            TileContent.Entity("light.a", camera = null),
+            controller.state.value.working!!.views[0].tiles[0].content,
+        )
+
+        controller.setCameraOptions("a", CameraTileOptions(focusStream = "main"))
+        controller.setCameraOptions("a", null)
+
+        assertEquals(
+            TileContent.Entity("light.a", camera = null),
+            controller.state.value.working!!.views[0].tiles[0].content,
+        )
+    }
+
+    @Test
+    fun `label and style edits keep the tile's camera options`() {
+        val (controller, _, _) = controller()
+        controller.enter(layout, "main")
+        controller.setCameraOptions("a", CameraTileOptions(focusStream = "main"))
+
+        controller.setLabel("a", "Frente")
+        controller.setStyle("a", TileStyle.QUICK_ADJUST)
+
+        assertEquals(
+            TileContent.Entity("light.a", "Frente", style = TileStyle.QUICK_ADJUST, camera = CameraTileOptions(focusStream = "main")),
+            controller.state.value.working!!.views[0].tiles[0].content,
+        )
     }
 
     @Test

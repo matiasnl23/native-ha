@@ -87,6 +87,67 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `camera options round-trip and a tile with no options writes no camera key`() {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "v1",
+                    name = "Principal",
+                    tiles = listOf(
+                        DashboardTile("a", TileContent.Entity("camera.a")),
+                        DashboardTile(
+                            "b",
+                            TileContent.Entity(
+                                "camera.b",
+                                camera = CameraTileOptions(focusStream = "main", thumbnailLive = true, thumbnailStream = "sub"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val json = DashboardLayoutJsonMapper.encode(layout)
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = json, legacyTilesJson = null)
+
+        assertEquals(layout, decoded.layout)
+        // Only "b" has non-default camera options; "a" (null, the default) writes no "camera" key at all.
+        assertEquals(1, Regex("\"camera\"").findAll(json).count())
+    }
+
+    @Test
+    fun `stored json from before the camera field existed decodes as null`() {
+        val stageJson = """
+            {"version":1,"views":[{"id":"v1","name":"Principal","tiles":[
+              {"id":"t1","content":{"type":"entity","entityId":"camera.front_door"}}
+            ]}]}
+        """.trimIndent()
+
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = stageJson, legacyTilesJson = null)
+
+        assertEquals(
+            TileContent.Entity("camera.front_door", camera = null),
+            decoded.layout.views.single().tiles.single().content,
+        )
+    }
+
+    @Test
+    fun `unknown extra keys inside camera options don't lose the layout`() {
+        val json = """
+            {"version":1,"views":[{"id":"v1","name":"Principal","tiles":[
+              {"id":"t1","content":{"type":"entity","entityId":"camera.front_door","camera":{"focusStream":"main","futureField":"???"}}}
+            ]}]}
+        """.trimIndent()
+
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = json, legacyTilesJson = null)
+
+        assertEquals(
+            TileContent.Entity("camera.front_door", camera = CameraTileOptions(focusStream = "main")),
+            decoded.layout.views.single().tiles.single().content,
+        )
+    }
+
+    @Test
     fun `stored json from before the tap action existed decodes as DEFAULT`() {
         val stage5Json = """
             {"version":1,"views":[{"id":"v1","name":"Principal","grid":{"columns":4,"rows":3},"tiles":[

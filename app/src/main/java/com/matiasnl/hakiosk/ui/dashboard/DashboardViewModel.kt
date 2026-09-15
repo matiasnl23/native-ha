@@ -483,6 +483,10 @@ class DashboardViewModel(
 
     fun setEditTileStyle(tileId: String, style: TileStyle) = editController.setStyle(tileId, style)
 
+    /** Working copy only, like every edit-modal field: persisted by Listo, discarded by Cancelar. */
+    fun setEditTileCameraOptions(tileId: String, options: CameraTileOptions?) =
+        editController.setCameraOptions(tileId, options)
+
     fun removeEditTile(tileId: String) = editController.removeTile(tileId)
 
     fun setEditGrid(grid: DashboardGrid) = editController.setGrid(grid)
