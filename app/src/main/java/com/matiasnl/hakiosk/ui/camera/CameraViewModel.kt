@@ -9,6 +9,7 @@ import com.matiasnl.hakiosk.camera.webrtc.CameraStreamState
 import com.matiasnl.hakiosk.camera.webrtc.RemoteVideoTrack
 import com.matiasnl.hakiosk.camera.webrtc.WebRtcSessionManager
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.data.ha.camera.CameraLiveSource
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraStreamType
 import kotlinx.coroutines.CancellationException
@@ -33,7 +34,7 @@ sealed interface CameraScreenMode {
 }
 
 sealed interface FallbackReason {
-    /** The camera doesn't list WebRTC in HA (no go2rtc / unsupported stream). */
+    /** The camera doesn't list WebRTC in HA (no go2rtc / unsupported stream). Never for a chosen go2rtc stream. */
     data object NoWebRtc : FallbackReason
 
     /** WebRTC was tried and failed; the user can retry. */
@@ -43,7 +44,8 @@ sealed interface FallbackReason {
 data class CameraUiState(val title: String, val mode: CameraScreenMode)
 
 /**
- * Focus view of one camera. Streams through the app-wide [WebRtcSessionManager] only between
+ * Focus view of one camera. Plays the go2rtc [stream] through Frigate when one is chosen, otherwise
+ * Home Assistant's own WebRTC stream. Streams through the app-wide [WebRtcSessionManager] only between
  * [onStart] and [onStop] (the screen ties them to its lifecycle), so leaving the screen or
  * backgrounding the app always releases the WebRTC connection.
  */
@@ -53,9 +55,11 @@ class CameraViewModel(
     haRepository: HaRepository,
     private val cameraSource: HaCameraSource,
     private val sessionManager: WebRtcSessionManager,
-    /** go2rtc stream to play through Frigate; null plays Home Assistant's own stream. Contract placeholder: not used yet. */
-    private val stream: String? = null,
+    /** go2rtc stream to play through Frigate; null or blank plays Home Assistant's own stream. */
+    stream: String? = null,
 ) : ViewModel() {
+
+    private val liveSource = CameraLiveSource.of(entityId, stream)
 
     /** null until known. */
     private val webRtcSupported = MutableStateFlow<Boolean?>(null)
@@ -113,7 +117,10 @@ class CameraViewModel(
     private fun connect() {
         startJob?.cancel()
         startJob = viewModelScope.launch {
-            if (!supportResolved) {
+            // `camera/capabilities` describes HA's own stream; a go2rtc stream is simply tried (failures fall back).
+            if (liveSource is CameraLiveSource.Go2rtc) {
+                webRtcSupported.value = true
+            } else if (!supportResolved) {
                 val types = try {
                     cameraSource.streamTypes(entityId)
                 } catch (e: CancellationException) {
@@ -124,7 +131,7 @@ class CameraViewModel(
                 supportResolved = types.isSuccess
                 webRtcSupported.value = types.getOrNull()?.contains(HaCameraStreamType.WEB_RTC) ?: true
             }
-            if (started && webRtcSupported.value == true) sessionManager.start(entityId)
+            if (started && webRtcSupported.value == true) sessionManager.start(liveSource)
         }
     }
 

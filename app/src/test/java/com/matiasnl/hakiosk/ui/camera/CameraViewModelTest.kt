@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -41,9 +42,12 @@ class CameraViewModelTest {
         ),
     )
 
-    private fun TestScope.viewModel(label: String? = null): Pair<CameraViewModel, WebRtcSessionManager> {
+    private fun TestScope.viewModel(
+        label: String? = null,
+        stream: String? = null,
+    ): Pair<CameraViewModel, WebRtcSessionManager> {
         val manager = WebRtcSessionManager(source, peers, backgroundScope)
-        val viewModel = CameraViewModel(CAMERA, label, repository, source, manager)
+        val viewModel = CameraViewModel(CAMERA, label, repository, source, manager, stream)
         backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
         return viewModel to manager
     }
@@ -147,5 +151,76 @@ class CameraViewModelTest {
         runCurrent()
 
         assertEquals(CameraScreenMode.Connecting, viewModel.uiState.value.mode)
+    }
+
+    @Test
+    fun `chosen stream plays through go2rtc without checking HA stream types`() = runTest {
+        // Would fall back to snapshots if the HA capabilities were consulted.
+        source.streamTypesResult = Result.success(setOf(HaCameraStreamType.HLS))
+        val (viewModel, _) = viewModel(stream = "front_sub")
+
+        viewModel.onStart()
+        runCurrent()
+        assertEquals(CameraScreenMode.Connecting, viewModel.uiState.value.mode)
+        val session = source.sessions.single()
+        assertEquals("front_sub", session.stream)
+
+        session.send(HaWebRtcEvent.Answer("answer"))
+        val video = FakeRemoteVideoTrack()
+        peers.lastPeer.emit(PeerEvent.VideoTrackAdded(video))
+        peers.lastPeer.emit(PeerEvent.FirstVideoFrame)
+        runCurrent()
+
+        assertEquals(CameraScreenMode.Playing(video, hasAudio = false, muted = true), viewModel.uiState.value.mode)
+    }
+
+    @Test
+    fun `failed go2rtc stream falls back to snapshots and retry opens a new go2rtc session`() = runTest {
+        val (viewModel, _) = viewModel(stream = "front")
+        viewModel.onStart()
+        runCurrent()
+
+        source.sessions.single().send(HaWebRtcEvent.Error("stream_not_found", "unknown src"))
+        runCurrent()
+        assertEquals(
+            CameraScreenMode.SnapshotFallback(
+                FallbackReason.LiveFailed(CameraStreamError.Signaling("stream_not_found", "unknown src")),
+            ),
+            viewModel.uiState.value.mode,
+        )
+
+        viewModel.retry()
+        runCurrent()
+        assertEquals(CameraScreenMode.Connecting, viewModel.uiState.value.mode)
+        assertEquals(listOf("front", "front"), source.sessions.map { it.stream })
+    }
+
+    @Test
+    fun `go2rtc stream stops on stop and resumes on start`() = runTest {
+        val (viewModel, manager) = viewModel(stream = "front")
+        viewModel.onStart()
+        runCurrent()
+
+        viewModel.onStop()
+        runCurrent()
+        assertEquals(CameraStreamState.Idle, manager.state.value)
+        assertTrue(peers.peers.single().isClosed)
+        assertFalse(source.sessions.single().isActive)
+
+        viewModel.onStart()
+        runCurrent()
+        assertEquals(listOf("front", "front"), source.sessions.map { it.stream })
+    }
+
+    @Test
+    fun `blank stream plays Home Assistant's own stream`() = runTest {
+        source.streamTypesResult = Result.success(setOf(HaCameraStreamType.HLS))
+        val (viewModel, _) = viewModel(stream = "  ")
+
+        viewModel.onStart()
+        runCurrent()
+
+        assertEquals(CameraScreenMode.SnapshotFallback(FallbackReason.NoWebRtc), viewModel.uiState.value.mode)
+        assertTrue(source.sessions.isEmpty())
     }
 }
