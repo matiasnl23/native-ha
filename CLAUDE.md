@@ -79,7 +79,12 @@ layout del dashboard) y controlan su casa.
 - Instalaciones de Home Assistant reales con **miles de entidades**: nada de listas completas sin
   límite, recalcular solo cuando cambia lo que importa (no en cada `state_changed`).
 - Reconexión robusta: la conexión con HA se va a caer y tiene que recuperarse sola.
-- Una sola sesión WebRTC activa a la vez; miniaturas de cámara por snapshot y solo si están visibles.
+- Cámaras: la pantalla completa usa una sola sesión WebRTC a la vez. Las miniaturas van por snapshot
+  (intervalo configurable por botón, mínimo 2 s) y solo si están visibles. Por decisión del usuario, un
+  botón puede activar la miniatura en vivo: sin límite de cantidad, pero cada sesión existe solo mientras
+  la miniatura está visible y se libera al salir de pantalla.
+- Streams de Frigate: con un stream elegido, el video va por el proxy go2rtc de la integración de Frigate
+  (Frigate 0.18+, integración v5.15.3+); sin stream elegido, por el WebRTC propio de Home Assistant.
 - Kotlin + Jetpack Compose nativo. Sin Flutter ni frameworks cross-platform. No agregar
   dependencias sin justificar que estén mantenidas.
 
