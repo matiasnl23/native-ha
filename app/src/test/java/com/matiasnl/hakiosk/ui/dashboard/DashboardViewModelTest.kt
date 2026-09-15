@@ -177,6 +177,30 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `swiping a light tile sets its brightness, and swiping it to zero turns it off`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("light.kitchen", "off", "Kitchen")))
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layoutWithTile("light.kitchen")))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onTileBrightnessChange(viewModel.uiState.value.entityTiles().single(), 40)
+        assertEquals("on", repository.entities.value.getValue("light.kitchen").state)
+
+        viewModel.onTileBrightnessChange(viewModel.uiState.value.entityTiles().single(), 0)
+        assertEquals("off", repository.entities.value.getValue("light.kitchen").state)
+    }
+
+    @Test
+    fun `brightness swipes are ignored for other domains`() = runTest {
+        val repository = FakeHaRepository(initialEntities = listOf(entity("switch.fan", "off", "Fan")))
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layoutWithTile("switch.fan")))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.onTileBrightnessChange(viewModel.uiState.value.entityTiles().single(), 40)
+
+        assertEquals("off", repository.entities.value.getValue("switch.fan").state)
+    }
+
+    @Test
     fun `tapping a sensor is a no-op`() = runTest {
         val repository = FakeHaRepository(initialEntities = listOf(entity("sensor.temp", "18.5", "Temp")))
         val layoutStore = InMemoryDashboardLayoutStore(layoutWithTile("sensor.temp"))
@@ -278,7 +302,12 @@ class DashboardViewModelTest {
 
         val tiles = viewModel.uiState.value.entityTiles()
         assertEquals(
-            listOf(TileSummary.Light(true, 60), TileSummary.Light(true, null), TileSummary.Light(false, null), TileSummary.Default),
+            listOf(
+                TileSummary.Light(true, 60, supportsBrightness = true),
+                TileSummary.Light(true, null, supportsBrightness = false),
+                TileSummary.Light(false, null, supportsBrightness = true),
+                TileSummary.Default,
+            ),
             tiles.map { it.summary },
         )
         assertEquals(listOf(true, true, true, false), tiles.map { it.hasDetails })
@@ -299,7 +328,7 @@ class DashboardViewModelTest {
         viewModel.onTileClick(before[0]) // Toggles light.a off; light.b's entity instance is untouched.
 
         val after = viewModel.uiState.value.entityTiles()
-        assertEquals(TileSummary.Light(false, null), after[0].summary)
+        assertEquals(TileSummary.Light(false, null, supportsBrightness = true), after[0].summary)
         assertSame(before[1].summary, after[1].summary)
     }
 

@@ -17,6 +17,8 @@ import com.matiasnl.hakiosk.data.dashboard.resolveViewId
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.data.ha.domain.LightCommands
+import com.matiasnl.hakiosk.data.ha.domain.call
 import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditController
 import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
@@ -490,6 +492,21 @@ class DashboardViewModel(
         if (tile.isMissing) return
         viewModelScope.launch {
             val result = haRepository.callService(tile.domain, service, tile.entityId)
+            if (result.isFailure) {
+                val message = result.exceptionOrNull()?.message ?: tile.entityId
+                _errorEvents.tryEmit(DashboardActionError(tile.label, message))
+            }
+        }
+    }
+
+    /**
+     * A light tile was swiped to [percent] brightness; 0 turns it off. No-op while editing, for a missing
+     * entity or for any other domain.
+     */
+    fun onTileBrightnessChange(tile: DashboardTileUiState, percent: Int) {
+        if (uiState.value.isEditing || tile.isMissing || tile.domain != "light") return
+        viewModelScope.launch {
+            val result = haRepository.call(tile.entityId, LightCommands.setBrightnessPercent(percent))
             if (result.isFailure) {
                 val message = result.exceptionOrNull()?.message ?: tile.entityId
                 _errorEvents.tryEmit(DashboardActionError(tile.label, message))

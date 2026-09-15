@@ -15,9 +15,14 @@ sealed interface TileSummary {
     /**
      * [brightnessPercent] is null when the light is off or doesn't support brightness. [color] is the
      * light's current color at full value, or null when it's off or reports no color (the tile then uses
-     * a default warm tint).
+     * a default warm tint). [supportsBrightness] enables the tile's brightness swipe, on or off.
      */
-    data class Light(val isOn: Boolean, val brightnessPercent: Int?, val color: Color? = null) : TileSummary
+    data class Light(
+        val isOn: Boolean,
+        val brightnessPercent: Int?,
+        val color: Color? = null,
+        val supportsBrightness: Boolean = false,
+    ) : TileSummary
 
     /** An alarm control panel: its state picks the tile's text and color. */
     data class Alarm(val state: AlarmPanelState) : TileSummary

@@ -81,7 +81,11 @@ import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
+import com.matiasnl.hakiosk.ui.dashboard.tiles.entityTileGestures
+import com.matiasnl.hakiosk.ui.dashboard.tiles.light.rememberBrightnessSwipeState
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryTileColors
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
 import androidx.compose.material3.CardColors
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryStateText
@@ -142,6 +146,7 @@ fun DashboardScreen(
         snackbarHostState = snackbarHostState,
         onTileClick = viewModel::onTileClick,
         onTileLongPress = viewModel::onTileLongPress,
+        onTileBrightnessChange = viewModel::onTileBrightnessChange,
         onPageSettled = viewModel::onPageSettled,
         onViewLinkClick = viewModel::onViewLinkClick,
         onSelectEditingView = viewModel::selectEditingView,
@@ -323,6 +328,7 @@ private fun DashboardContent(
     snackbarHostState: SnackbarHostState,
     onTileClick: (DashboardTileUiState) -> Unit,
     onTileLongPress: (DashboardTileUiState) -> Unit,
+    onTileBrightnessChange: (DashboardTileUiState, percent: Int) -> Unit,
     onPageSettled: (viewId: String) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onSelectEditingView: (viewId: String) -> Unit,
@@ -422,6 +428,7 @@ private fun DashboardContent(
                     scrollState = scrollStates.getOrPut(page.viewId) { ScrollState(0) },
                     onTileClick = onTileClick,
                     onTileLongPress = onTileLongPress,
+                    onTileBrightnessChange = onTileBrightnessChange,
                     onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
                     onMoveTile = onMoveTile,
@@ -486,6 +493,7 @@ private fun DashboardPage(
     scrollState: ScrollState,
     onTileClick: (DashboardTileUiState) -> Unit,
     onTileLongPress: (DashboardTileUiState) -> Unit,
+    onTileBrightnessChange: (DashboardTileUiState, percent: Int) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
@@ -538,6 +546,7 @@ private fun DashboardPage(
                         placement = placement,
                         onClick = { onTileClick(tile) },
                         onLongClick = { onTileLongPress(tile) },
+                        onBrightnessChange = { percent -> onTileBrightnessChange(tile, percent) },
                     )
                 }
                 is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
@@ -708,34 +717,48 @@ private fun DashboardTileCard(
     placement: GridPlacement,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onBrightnessChange: (percent: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dimmed = tile.isMissing || tile.isUnavailable
-    val gestures = when {
-        tile.hasDetails -> Modifier.combinedClickable(
-            onClick = { if (tile.isActionable) onClick() },
-            onLongClick = onLongClick,
+    val light = (tile.summary as? TileSummary.Light)?.takeIf { it.supportsBrightness && !dimmed }
+    val brightnessSwipe = light?.let {
+        rememberBrightnessSwipeState(
+            confirmedPercent = if (it.isOn) it.brightnessPercent?.toFloat() ?: 100f else 0f,
+            onCommit = onBrightnessChange,
         )
-        tile.isActionable -> Modifier.clickable(onClick = onClick)
-        else -> Modifier
+    }
+    // While swiped, the tile shows the swiped brightness (text, fill and on/off colors) until HA confirms it.
+    val heldPercent = brightnessSwipe?.heldPercent
+    val summary = if (light != null && heldPercent != null) {
+        light.copy(isOn = heldPercent > 0, brightnessPercent = heldPercent.takeIf { it > 0 })
+    } else {
+        tile.summary
     }
     Card(
         modifier = modifier
             .fillMaxSize()
-            .then(gestures),
-        colors = entityTileColors(tile, dimmed),
+            .entityTileGestures(
+                isActionable = tile.isActionable,
+                hasDetails = tile.hasDetails,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                brightnessSwipe = brightnessSwipe,
+                reverseSwipeDirection = LocalLayoutDirection.current == LayoutDirection.Rtl,
+            ),
+        colors = entityTileColors(tile, summary, dimmed),
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            if (!dimmed) TileSummaryBackground(tile.summary, Modifier.matchParentSize())
-            DashboardTileContent(tile, placement)
+            if (!dimmed) TileSummaryBackground(summary, Modifier.matchParentSize())
+            DashboardTileContent(tile, summary, placement)
         }
     }
 }
 
 /** A summary's own colors (e.g. an alarm's state color) when the tile is live, else the on/off colors. */
 @Composable
-private fun entityTileColors(tile: DashboardTileUiState, dimmed: Boolean): CardColors {
-    val summaryColors = if (dimmed) null else summaryTileColors(tile.summary)
+private fun entityTileColors(tile: DashboardTileUiState, summary: TileSummary, dimmed: Boolean): CardColors {
+    val summaryColors = if (dimmed) null else summaryTileColors(summary)
     return CardDefaults.cardColors(
         containerColor = summaryColors?.container ?: tileContainerColor(dimmed, tile.isOn),
         contentColor = summaryColors?.content ?: tileContentColor(dimmed, tile.isOn),
@@ -743,12 +766,11 @@ private fun entityTileColors(tile: DashboardTileUiState, dimmed: Boolean): CardC
 }
 
 @Composable
-private fun DashboardTileContent(tile: DashboardTileUiState, placement: GridPlacement) {
-    val dimmed = tile.isMissing || tile.isUnavailable
+private fun DashboardTileContent(tile: DashboardTileUiState, summary: TileSummary, placement: GridPlacement) {
     val stateText = when {
         tile.isMissing -> stringResource(R.string.dashboard_state_missing)
         tile.isUnavailable -> stringResource(R.string.dashboard_state_unavailable)
-        else -> summaryStateText(tile.summary) ?: when {
+        else -> summaryStateText(summary) ?: when {
             tile.unitOfMeasurement != null -> "${tile.stateValue} ${tile.unitOfMeasurement}"
             else -> tile.stateValue.orEmpty()
         }
@@ -909,13 +931,19 @@ private fun EditModeTileCell(
                     CameraTileContent(tile, placement, isVisible, cameraThumbnail)
                 }
             } else {
-                val colors = entityTileColors(tile, dimmed)
+                val colors = entityTileColors(tile, tile.summary, dimmed)
                 EditableTileShell(
                     onClick = { onEditTile(tile.id) },
                     containerColor = colors.containerColor,
                     contentColor = colors.contentColor,
                 ) {
-                    DashboardTileContent(tile, placement)
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Static in edit mode: a light's brightness fill, but never the alarm's animated pulse.
+                        if (!dimmed && tile.summary is TileSummary.Light) {
+                            TileSummaryBackground(tile.summary, Modifier.matchParentSize())
+                        }
+                        DashboardTileContent(tile, tile.summary, placement)
+                    }
                 }
             }
         }
@@ -1058,6 +1086,7 @@ private fun DashboardPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1103,6 +1132,7 @@ private fun DashboardSmartTilesPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1152,6 +1182,7 @@ private fun DashboardMultiViewPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1184,6 +1215,7 @@ private fun DashboardEmptyPreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1228,6 +1260,7 @@ private fun DashboardEditModePreview() {
             snackbarHostState = remember { SnackbarHostState() },
             onTileClick = {},
             onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},

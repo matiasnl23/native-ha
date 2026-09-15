@@ -49,19 +49,19 @@ class DomainTileBehaviorsTest {
         val light = DomainTileBehaviors.forDomain("light")
 
         assertEquals(
-            TileSummary.Light(isOn = true, brightnessPercent = 60),
+            TileSummary.Light(isOn = true, brightnessPercent = 60, supportsBrightness = true),
             light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["brightness"],"brightness":153}""")),
         )
         assertEquals(
-            TileSummary.Light(isOn = true, brightnessPercent = 1),
+            TileSummary.Light(isOn = true, brightnessPercent = 1, supportsBrightness = true),
             light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["hs"],"brightness":1}""")),
         )
         assertEquals(
-            TileSummary.Light(isOn = true, brightnessPercent = null),
+            TileSummary.Light(isOn = true, brightnessPercent = null, supportsBrightness = false),
             light.summarize(testEntity("light.a", "on", """{"supported_color_modes":["onoff"],"brightness":153}""")),
         )
         assertEquals(
-            TileSummary.Light(isOn = false, brightnessPercent = null),
+            TileSummary.Light(isOn = false, brightnessPercent = null, supportsBrightness = true),
             light.summarize(testEntity("light.a", "off", """{"supported_color_modes":["brightness"]}""")),
         )
     }

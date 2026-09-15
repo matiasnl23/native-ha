@@ -22,7 +22,12 @@ object LightTileBehavior : DomainTileBehavior {
             ?.takeIf { capabilities.isOn && capabilities.supportsBrightness }
             ?.coerceAtLeast(1)
         val color = if (capabilities.isOn) currentColor(capabilities) else null
-        return TileSummary.Light(isOn = capabilities.isOn, brightnessPercent = percent, color = color)
+        return TileSummary.Light(
+            isOn = capabilities.isOn,
+            brightnessPercent = percent,
+            color = color,
+            supportsBrightness = capabilities.supportsBrightness,
+        )
     }
 
     /**
