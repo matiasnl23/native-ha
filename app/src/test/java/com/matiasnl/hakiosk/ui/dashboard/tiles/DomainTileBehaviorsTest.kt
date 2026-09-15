@@ -132,7 +132,8 @@ class DomainTileBehaviorsTest {
     @Test
     fun `only domains with a tap or style choice contribute an edit-modal section`() {
         fun sectionsOf(domain: String) =
-            DomainTileBehaviors.forDomain(domain).editSections(TileTapAction.DEFAULT, {}, TileStyle.DEFAULT, {})
+            DomainTileBehaviors.forDomain(domain)
+                .editSections(TileEditOptions("$domain.a", TileTapAction.DEFAULT, TileStyle.DEFAULT, null)) {}
 
         assertEquals(1, sectionsOf("light").size)
         assertEquals(1, sectionsOf("climate").size)

@@ -1,14 +1,13 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles.climate
 
 import androidx.compose.runtime.Composable
-import com.matiasnl.hakiosk.data.dashboard.TileStyle
-import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.domain.ClimateCapabilities
 import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetails
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileEditOptions
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 
 /**
@@ -41,11 +40,10 @@ object ClimateTileBehavior : DomainTileBehavior {
     }
 
     override fun editSections(
-        tapAction: TileTapAction,
-        onTapActionChange: (TileTapAction) -> Unit,
-        style: TileStyle,
-        onStyleChange: (TileStyle) -> Unit,
-    ): List<@Composable () -> Unit> = listOf { ClimateStyleSection(style, onStyleChange) }
+        options: TileEditOptions,
+        onOptionsChange: (TileEditOptions) -> Unit,
+    ): List<@Composable () -> Unit> =
+        listOf { ClimateStyleSection(options.style) { onOptionsChange(options.copy(style = it)) } }
 }
 
 /**

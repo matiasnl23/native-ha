@@ -77,7 +77,9 @@ import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsHost
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
+import com.matiasnl.hakiosk.ui.dashboard.tiles.TileEditOptions
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
@@ -230,11 +232,12 @@ fun DashboardScreen(
         EditTileModalHost(
             uiState = uiState,
             tileId = tileId,
-            onApply = { label, colSpan, rowSpan, tapAction, style ->
+            onApply = { label, colSpan, rowSpan, tapAction, style, camera ->
                 viewModel.setEditTileLabel(tileId, label)
                 viewModel.resizeEditTile(tileId, colSpan, rowSpan)
                 tapAction?.let { viewModel.setEditTileTapAction(tileId, it) }
                 style?.let { viewModel.setEditTileStyle(tileId, it) }
+                camera?.let { viewModel.setEditTileCameraOptions(tileId, it.value) }
                 editingTileId = null
             },
             onRemove = {
@@ -279,13 +282,50 @@ private fun DashboardUiState.editablePreviewTiles(): List<PreviewTile> =
         PreviewTile(colSpan = tile.colSpan, rowSpan = tile.rowSpan, isSpacer = tile is SpacerTileUiState)
     }
 
+/**
+ * Camera options to write when the modal is applied, or null when the tile's domain doesn't offer
+ * them (nothing to write). Distinct from the wrapped value, which is a real, meaningful "all
+ * defaults" when null.
+ */
+private data class CameraOptionsEdit(val value: CameraTileOptions?)
+
+/**
+ * Saves a modal-local, possibly-null [CameraTileOptions] across process death. The leading boolean
+ * marks whether it was present, since null is itself a valid value (all defaults) that must not be
+ * confused with "nothing saved".
+ */
+private val CameraTileOptionsSaver: Saver<CameraTileOptions?, List<Any?>> = Saver(
+    save = { options ->
+        listOf(options != null, options?.focusStream, options?.thumbnailStream, options?.thumbnailRefreshSeconds, options?.thumbnailLive ?: false)
+    },
+    restore = { saved ->
+        if (saved[0] as Boolean) {
+            CameraTileOptions(
+                focusStream = saved[1] as? String,
+                thumbnailStream = saved[2] as? String,
+                thumbnailRefreshSeconds = saved[3] as? Int,
+                thumbnailLive = saved[4] as? Boolean ?: false,
+            )
+        } else {
+            null
+        }
+    },
+)
+
 /** Resolves the per-tile-type title/label metadata and renders [EditTileModal], or nothing if the tile is gone. */
 @Composable
 private fun EditTileModalHost(
     uiState: DashboardUiState,
     tileId: String,
-    /** [tapAction] and [style] are null when the tile's domain offers no such choice (nothing to write). */
-    onApply: (label: String?, colSpan: Int, rowSpan: Int, tapAction: TileTapAction?, style: TileStyle?) -> Unit,
+    /** [tapAction], [style] and [camera] are null when the tile's domain offers no such choice (nothing to write). */
+    onApply: (
+        label: String?,
+        colSpan: Int,
+        rowSpan: Int,
+        tapAction: TileTapAction?,
+        style: TileStyle?,
+        camera: CameraOptionsEdit?,
+    ) -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -296,9 +336,20 @@ private fun EditTileModalHost(
     // Modal-local like the label and size: it only reaches the working copy through Aplicar.
     var tapAction by rememberSaveable(tileId) { mutableStateOf(entityTile?.tapAction ?: TileTapAction.DEFAULT) }
     var style by rememberSaveable(tileId) { mutableStateOf(entityTile?.style ?: TileStyle.DEFAULT) }
+    var camera by rememberSaveable(tileId, stateSaver = CameraTileOptionsSaver) { mutableStateOf(entityTile?.camera) }
     val behavior = entityTile?.let { DomainTileBehaviors.forDomain(it.domain) }
+    val editOptions = TileEditOptions(
+        entityId = entityTile?.entityId.orEmpty(),
+        tapAction = tapAction,
+        style = style,
+        camera = camera,
+    )
     val domainSections = behavior
-        ?.editSections(tapAction, { tapAction = it }, style, { style = it })
+        ?.editSections(editOptions) { updated ->
+            tapAction = updated.tapAction
+            style = updated.style
+            camera = updated.camera
+        }
         .orEmpty()
     val previewTiles = uiState.editablePreviewTiles()
     val viewLinkFallback = stringResource(R.string.dashboard_view_link_fallback)
@@ -327,6 +378,7 @@ private fun EditTileModalHost(
                 rowSpan,
                 tapAction.takeIf { behavior?.offersTapActionChoice == true },
                 style.takeIf { behavior?.offersStyleChoice == true },
+                CameraOptionsEdit(camera).takeIf { behavior?.offersCameraOptions == true },
             )
         },
         onRemove = onRemove,

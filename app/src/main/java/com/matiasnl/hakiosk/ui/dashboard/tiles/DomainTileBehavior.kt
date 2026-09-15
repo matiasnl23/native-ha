@@ -1,12 +1,25 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import androidx.compose.runtime.Composable
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.AlarmTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.LightTileBehavior
+
+/**
+ * Modal-local snapshot of everything an entity tile's edit-modal sections can change: nothing reaches
+ * the working copy until "Aplicar" (see `EditTileModalHost`). [entityId] is read-only context for a
+ * section that needs it (e.g. the camera stream catalog is looked up per entity).
+ */
+data class TileEditOptions(
+    val entityId: String,
+    val tapAction: TileTapAction,
+    val style: TileStyle,
+    val camera: CameraTileOptions?,
+)
 
 /** What a tap on an entity tile does, once the domain and the tile's own preference are resolved. */
 enum class TileAction {
@@ -50,6 +63,9 @@ interface DomainTileBehavior {
     /** Whether the edit modal offers a [TileStyle] choice; the domain's [editSections] then shows it. */
     val offersStyleChoice: Boolean get() = false
 
+    /** Whether the edit modal offers camera stream/thumbnail options; the default [editSections] then shows them. */
+    val offersCameraOptions: Boolean get() = false
+
     /** The tap action for a tile with [preference]; the preference only matters when [offersTapActionChoice]. */
     fun resolveTap(preference: TileTapAction): TileAction {
         if (!offersTapActionChoice) return tapAction
@@ -67,15 +83,18 @@ interface DomainTileBehavior {
 
     /**
      * The edit modal's sections for a tile of this domain (passed as `EditTileModal`'s `domainSections`).
-     * They edit modal-local state, so a change only reaches the working copy when the modal is applied.
+     * They edit modal-local [options], so a change only reaches the working copy when the modal is
+     * applied; [onOptionsChange] replaces the whole snapshot (a section only touches its own fields).
      */
     fun editSections(
-        tapAction: TileTapAction,
-        onTapActionChange: (TileTapAction) -> Unit,
-        style: TileStyle,
-        onStyleChange: (TileStyle) -> Unit,
+        options: TileEditOptions,
+        onOptionsChange: (TileEditOptions) -> Unit,
     ): List<@Composable () -> Unit> =
-        if (offersTapActionChoice) listOf { TapActionSection(tapAction, onTapActionChange) } else emptyList()
+        if (offersTapActionChoice) {
+            listOf { TapActionSection(options.tapAction) { onOptionsChange(options.copy(tapAction = it)) } }
+        } else {
+            emptyList()
+        }
 }
 
 /** Read-only tiles (sensors, binary sensors, anything unknown): taps are no-ops. */
