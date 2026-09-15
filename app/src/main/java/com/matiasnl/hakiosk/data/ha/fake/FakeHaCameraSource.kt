@@ -16,7 +16,17 @@ import kotlinx.coroutines.flow.flowOf
 class FakeHaCameraSource(
     private val snapshotJpeg: ByteArray = ByteArray(0),
     private val streamTypes: Set<HaCameraStreamType> = setOf(HaCameraStreamType.WEB_RTC),
+    private val go2rtcStreams: List<String> = listOf("front", "front_sub"),
 ) : HaCameraSource {
+    override suspend fun go2rtcStreams(entityId: String): Result<List<String>> = Result.success(go2rtcStreams)
+
+    override fun go2rtcWebRtcSession(
+        entityId: String,
+        stream: String,
+        offerSdp: String,
+        localCandidates: Flow<HaIceCandidate>,
+    ): Flow<HaWebRtcEvent> = flowOf(HaWebRtcEvent.Error("fake", "No WebRTC peer in fake camera source"))
+
     override suspend fun fetchSnapshot(entityId: String, width: Int?): Result<ByteArray> =
         Result.success(snapshotJpeg)
 

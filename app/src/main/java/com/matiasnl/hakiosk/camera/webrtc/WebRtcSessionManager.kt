@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.camera.webrtc
 
+import com.matiasnl.hakiosk.data.ha.camera.CameraLiveSource
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
 import com.matiasnl.hakiosk.data.ha.camera.HaIceCandidate
 import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcEvent
@@ -79,6 +80,12 @@ class WebRtcSessionManager(
             }
         }
     }
+
+    /**
+     * Starts streaming [source]. Contract placeholder: plays Home Assistant's own stream until the
+     * go2rtc path is wired in.
+     */
+    fun start(source: CameraLiveSource) = start(source.entityId)
 
     /**
      * Stops the session. With [entityId], only stops if that camera is the current one, so a screen

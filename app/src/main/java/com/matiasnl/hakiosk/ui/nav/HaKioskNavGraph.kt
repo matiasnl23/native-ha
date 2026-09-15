@@ -35,7 +35,9 @@ import com.matiasnl.hakiosk.data.display.DisplayPreferencesStore
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.ui.camera.CameraScreen
-import com.matiasnl.hakiosk.ui.camera.CameraThumbnail
+import com.matiasnl.hakiosk.ui.camera.CameraTileThumbnail
+import com.matiasnl.hakiosk.ui.dashboard.tiles.LocalCameraStreamCatalog
+import androidx.compose.runtime.CompositionLocalProvider
 import com.matiasnl.hakiosk.ui.camera.CameraViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
@@ -250,22 +252,27 @@ fun HaKioskNavGraph(
                             dashboardViewModel = viewModel
                             onDispose { if (dashboardViewModel === viewModel) dashboardViewModel = null }
                         }
-                        DashboardScreen(
-                            viewModel = viewModel,
-                            onOpenSettings = { navController.navigate(SetupRoute) },
-                            onOpenCamera = { entityId, label ->
-                                // launchSingleTop: a double tap must not stack two camera screens.
-                                navController.navigate(CameraRoute(entityId, label)) { launchSingleTop = true }
-                            },
-                            cameraThumbnail = { entityId, active, modifier ->
-                                CameraThumbnail(
-                                    entityId = entityId,
-                                    snapshots = cameraModule.snapshots,
-                                    modifier = modifier,
-                                    active = active,
-                                )
-                            },
-                        )
+                        CompositionLocalProvider(
+                            LocalCameraStreamCatalog provides { entityId -> cameraModule.cameraSource.go2rtcStreams(entityId) },
+                        ) {
+                            DashboardScreen(
+                                viewModel = viewModel,
+                                onOpenSettings = { navController.navigate(SetupRoute) },
+                                onOpenCamera = { entityId, label, stream ->
+                                    // launchSingleTop: a double tap must not stack two camera screens.
+                                    navController.navigate(CameraRoute(entityId, label, stream)) { launchSingleTop = true }
+                                },
+                                cameraThumbnail = { entityId, options, active, modifier ->
+                                    CameraTileThumbnail(
+                                        entityId = entityId,
+                                        options = options,
+                                        active = active,
+                                        camera = cameraModule,
+                                        modifier = modifier,
+                                    )
+                                },
+                            )
+                        }
                     }
                     composable<CameraRoute> { backStackEntry ->
                         val route = backStackEntry.toRoute<CameraRoute>()
@@ -277,6 +284,7 @@ fun HaKioskNavGraph(
                                 haRepository = haRepository,
                                 cameraSource = cameraModule.cameraSource,
                                 sessionManager = cameraModule.webRtcSessionManager,
+                                stream = route.stream,
                             ),
                         )
                         CameraScreen(

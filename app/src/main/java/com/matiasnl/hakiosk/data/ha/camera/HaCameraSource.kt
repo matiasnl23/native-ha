@@ -53,4 +53,40 @@ interface HaCameraSource {
     fun webRtcSession(entityId: String, offerSdp: String): Flow<HaWebRtcEvent>
 
     suspend fun sendWebRtcCandidate(entityId: String, sessionId: String, candidate: HaIceCandidate): Result<Unit>
+
+    /**
+     * go2rtc stream names reachable through the Frigate integration for the Frigate camera behind
+     * [entityId] (its `client_id` attribute selects the Frigate instance), sorted. Fails when the entity
+     * isn't a Frigate camera or the proxy can't be reached. Frigate integration v5.15.3+ with Frigate 0.18+.
+     */
+    suspend fun go2rtcStreams(entityId: String): Result<List<String>>
+
+    /**
+     * WebRTC signaling with go2rtc for [stream] through the Frigate integration's proxy
+     * (`/api/frigate/<client_id>/webrtc/api/ws?src=<stream>`). Emits [HaWebRtcEvent.Answer] (always
+     * before any candidate), [HaWebRtcEvent.RemoteCandidate] and a terminal [HaWebRtcEvent.Error], but
+     * never [HaWebRtcEvent.Session]. Candidates from [localCandidates] are sent for as long as the flow
+     * is collected; cancelling the collection closes the connection.
+     */
+    fun go2rtcWebRtcSession(
+        entityId: String,
+        stream: String,
+        offerSdp: String,
+        localCandidates: Flow<HaIceCandidate>,
+    ): Flow<HaWebRtcEvent>
+}
+
+/** What a live view plays: Home Assistant's own WebRTC stream of the entity, or a named go2rtc stream through Frigate. */
+sealed interface CameraLiveSource {
+    val entityId: String
+
+    data class HomeAssistant(override val entityId: String) : CameraLiveSource
+
+    data class Go2rtc(override val entityId: String, val stream: String) : CameraLiveSource
+
+    companion object {
+        /** A blank or null [stream] means Home Assistant's own stream. */
+        fun of(entityId: String, stream: String?): CameraLiveSource =
+            stream?.trim()?.takeIf { it.isNotEmpty() }?.let { Go2rtc(entityId, it) } ?: HomeAssistant(entityId)
+    }
 }

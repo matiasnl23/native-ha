@@ -57,7 +57,8 @@ sealed interface TileContent {
      * A Home Assistant entity button. [label] overrides the entity's friendly name when not null.
      * [tapAction] is the tile's own tap preference; stored JSON from before it existed decodes as
      * [TileTapAction.DEFAULT], and the default is never written. [style] works the same way with
-     * [TileStyle.DEFAULT].
+     * [TileStyle.DEFAULT]. [camera] holds a camera tile's own options; null (never written) means all
+     * defaults.
      */
     @Serializable
     @SerialName("entity")
@@ -66,6 +67,7 @@ sealed interface TileContent {
         val label: String? = null,
         val tapAction: TileTapAction = TileTapAction.DEFAULT,
         val style: TileStyle = TileStyle.DEFAULT,
+        val camera: CameraTileOptions? = null,
     ) : TileContent
 
     /** Navigates to another [DashboardView] when tapped. */
@@ -111,6 +113,28 @@ enum class TileStyle {
     /** Adjustment buttons on the tile itself (e.g. a climate setpoint's − and +). */
     @SerialName("quick_adjust")
     QUICK_ADJUST,
+}
+
+/**
+ * A camera tile's own options. Each default reproduces the behavior from before the option existed; a
+ * tile whose options are all defaults should store null instead (see [isDefault]).
+ */
+@Serializable
+data class CameraTileOptions(
+    /** go2rtc stream (through the Frigate integration) for the full-screen view; null plays Home Assistant's own stream. */
+    val focusStream: String? = null,
+    /** go2rtc stream for a live thumbnail; null plays Home Assistant's own stream. Only used with [thumbnailLive]. */
+    val thumbnailStream: String? = null,
+    /** Seconds between thumbnail snapshots; null uses the app default. Never below [MIN_THUMBNAIL_REFRESH_SECONDS]. */
+    val thumbnailRefreshSeconds: Int? = null,
+    /** Live video in the thumbnail while it's visible, instead of periodic snapshots. */
+    val thumbnailLive: Boolean = false,
+) {
+    val isDefault: Boolean get() = this == CameraTileOptions()
+
+    companion object {
+        const val MIN_THUMBNAIL_REFRESH_SECONDS = 2
+    }
 }
 
 /** Valid range for grid columns/rows and tile spans. */

@@ -40,13 +40,14 @@ fun CameraThumbnail(
     snapshots: CameraSnapshotRepository<ImageBitmap>,
     modifier: Modifier = Modifier,
     active: Boolean = true,
+    refreshIntervalMillis: Long = THUMBNAIL_REFRESH_INTERVAL_MS,
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
-    val images = remember(entityId, size, active) {
+    val images = remember(entityId, size, active, refreshIntervalMillis) {
         if (!active || size.width <= 0 || size.height <= 0) {
             emptyFlow()
         } else {
-            snapshots.snapshots(entityId, size.width, size.height, THUMBNAIL_REFRESH_INTERVAL_MS, useCache = true)
+            snapshots.snapshots(entityId, size.width, size.height, refreshIntervalMillis, useCache = true)
                 .map { it.image }
         }
     }

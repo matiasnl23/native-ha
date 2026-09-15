@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -97,6 +98,17 @@ class WebSocketHaCameraSource internal constructor(
             subscription.close()
         }
     }
+
+    // Contract placeholders: the Frigate proxy client replaces them.
+    override suspend fun go2rtcStreams(entityId: String): Result<List<String>> =
+        Result.failure(UnsupportedOperationException("go2rtc streams are not available yet"))
+
+    override fun go2rtcWebRtcSession(
+        entityId: String,
+        stream: String,
+        offerSdp: String,
+        localCandidates: Flow<HaIceCandidate>,
+    ): Flow<HaWebRtcEvent> = flowOf(HaWebRtcEvent.Error("not_implemented", "go2rtc WebRTC is not available yet"))
 
     private suspend fun <T : Any> command(parse: (JsonElement) -> T?, message: (id: Int) -> JsonObject): Result<T> {
         val connection = activeConnection()

@@ -28,6 +28,7 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehavior
@@ -102,6 +103,8 @@ data class DashboardTileUiState(
     val tapAction: TileTapAction = TileTapAction.DEFAULT,
     /** The tile's stored style; only domains that offer a style choice read it. */
     val style: TileStyle = TileStyle.DEFAULT,
+    /** A camera tile's stored options; null means all defaults. */
+    val camera: CameraTileOptions? = null,
     /** True when a long press (outside edit mode) opens a details panel: the domain has one and the entity exists. */
     val hasDetails: Boolean = false,
     /** Domain-specific summary (e.g. a light's brightness); [TileSummary.Default] shows the raw state. */
@@ -203,7 +206,8 @@ data class DashboardUiState(
 }
 
 /** A camera tile was tapped: the screen should open its focus view. */
-data class OpenCameraEvent(val entityId: String, val label: String)
+/** [stream] is the tile's go2rtc stream for full screen, or null for Home Assistant's own stream. */
+data class OpenCameraEvent(val entityId: String, val label: String, val stream: String? = null)
 
 /** A tile's service call failed; [message] is the repository's error message shown verbatim. */
 data class DashboardActionError(val label: String, val message: String)
@@ -490,7 +494,7 @@ class DashboardViewModel(
         if (uiState.value.isEditing) return
         val action = DomainTileBehaviors.forDomain(tile.domain).resolveTap(tile.tapAction)
         if (action == TileAction.OPEN_CAMERA) {
-            if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label))
+            if (tile.isActionable) _openCameraEvents.tryEmit(OpenCameraEvent(tile.entityId, tile.label, tile.camera?.focusStream))
             return
         }
         if (action == TileAction.OPEN_DETAILS) {
@@ -737,6 +741,7 @@ class DashboardViewModel(
             defaultLabel = fallbackLabel,
             tapAction = tapAction,
             style = style,
+            camera = camera,
             hasDetails = entity != null && behavior.details != null,
             summary = if (entity != null) summaryFor(behavior, entity) else TileSummary.Default,
         )

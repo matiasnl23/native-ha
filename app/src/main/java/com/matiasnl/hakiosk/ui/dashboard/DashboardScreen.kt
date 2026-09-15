@@ -88,6 +88,7 @@ import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpoint
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpointState
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.rememberClimateSetpointState
 import com.matiasnl.hakiosk.data.dashboard.TileStyle
+import com.matiasnl.hakiosk.data.dashboard.CameraTileOptions
 import com.matiasnl.hakiosk.data.ha.domain.HvacAction
 import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.rememberBrightnessSwipeState
@@ -99,14 +100,15 @@ import androidx.compose.material3.CardColors
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryStateText
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
 
-/** Renders the camera snapshot of [entityId]; polls only while [active]. */
-typealias CameraThumbnailSlot = @Composable (entityId: String, active: Boolean, modifier: Modifier) -> Unit
+/** Renders the picture of camera [entityId] per the tile's [options] (null: defaults); works only while [active]. */
+typealias CameraThumbnailSlot = @Composable (entityId: String, options: CameraTileOptions?, active: Boolean, modifier: Modifier) -> Unit
 
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     onOpenSettings: () -> Unit,
-    onOpenCamera: (entityId: String, label: String) -> Unit,
+    /** [stream] is the tile's go2rtc stream for full screen, or null for Home Assistant's own stream. */
+    onOpenCamera: (entityId: String, label: String, stream: String?) -> Unit,
     cameraThumbnail: CameraThumbnailSlot,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -122,7 +124,7 @@ fun DashboardScreen(
     val detailsRequest by viewModel.detailsRequest.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
-        viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label) }
+        viewModel.openCameraEvents.collect { currentOnOpenCamera(it.entityId, it.label, it.stream) }
     }
 
     LaunchedEffect(viewModel) {
@@ -883,7 +885,7 @@ private fun CameraTileContent(
         if (dimmed) {
             CameraThumbnailContent(image = null, modifier = Modifier.matchParentSize())
         } else {
-            thumbnail(tile.entityId, isVisible, Modifier.matchParentSize())
+            thumbnail(tile.entityId, tile.camera, isVisible, Modifier.matchParentSize())
         }
         Column(
             modifier = Modifier
@@ -1160,7 +1162,7 @@ private fun DashboardPreview() {
             onOpenGridSettings = {},
             onOpenViews = {},
             onUserActivity = {},
-            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -1217,7 +1219,7 @@ private fun DashboardSmartTilesPreview() {
             onOpenGridSettings = {},
             onOpenViews = {},
             onUserActivity = {},
-            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -1269,7 +1271,7 @@ private fun DashboardMultiViewPreview() {
             onOpenGridSettings = {},
             onOpenViews = {},
             onUserActivity = {},
-            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -1304,7 +1306,7 @@ private fun DashboardEmptyPreview() {
             onOpenGridSettings = {},
             onOpenViews = {},
             onUserActivity = {},
-            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }
@@ -1351,7 +1353,7 @@ private fun DashboardEditModePreview() {
             onOpenGridSettings = {},
             onOpenViews = {},
             onUserActivity = {},
-            cameraThumbnail = { _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
         )
     }
 }

@@ -53,6 +53,8 @@ class CameraViewModel(
     haRepository: HaRepository,
     private val cameraSource: HaCameraSource,
     private val sessionManager: WebRtcSessionManager,
+    /** go2rtc stream to play through Frigate; null plays Home Assistant's own stream. Contract placeholder: not used yet. */
+    private val stream: String? = null,
 ) : ViewModel() {
 
     /** null until known. */
@@ -137,8 +139,9 @@ class CameraViewModel(
             haRepository: HaRepository,
             cameraSource: HaCameraSource,
             sessionManager: WebRtcSessionManager,
+            stream: String? = null,
         ) = viewModelFactory {
-            initializer { CameraViewModel(entityId, label, haRepository, cameraSource, sessionManager) }
+            initializer { CameraViewModel(entityId, label, haRepository, cameraSource, sessionManager, stream) }
         }
     }
 }
