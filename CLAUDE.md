@@ -84,7 +84,7 @@ layout del dashboard) y controlan su casa.
   botón puede activar la miniatura en vivo: sin límite de cantidad, pero cada sesión existe solo mientras
   la miniatura está visible y se libera al salir de pantalla.
 - Streams de Frigate: con un stream elegido, el video va por el proxy go2rtc de la integración de Frigate
-  (Frigate 0.18+, integración v5.15.3+); sin stream elegido, por el WebRTC propio de Home Assistant.
+  (Frigate 0.17+, integración v5.12+); sin stream elegido, por el WebRTC propio de Home Assistant.
 - Kotlin + Jetpack Compose nativo. Sin Flutter ni frameworks cross-platform. No agregar
   dependencias sin justificar que estén mantenidas.
 
