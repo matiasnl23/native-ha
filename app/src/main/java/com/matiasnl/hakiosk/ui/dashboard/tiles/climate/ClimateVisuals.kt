@@ -56,20 +56,24 @@ val HvacAction?.isRunning: Boolean get() = this != null && this != HvacAction.ID
 fun climateStatusText(mode: HvacMode, action: HvacAction?): String =
     stringResource(if (action.isRunning) action!!.labelRes() else mode.labelRes())
 
-/** The tile's state line: "24,5° · Enfriando → 22°", "21° · Apagado"; null when the mode is unknown. */
+/** The line under the tile's reading: "Enfriando · objetivo 22°", "Apagado"; null when the mode is unknown. */
 @Composable
-fun climateStateText(summary: TileSummary.Climate): String? {
+fun climateReadingDetail(summary: TileSummary.Climate): String? {
     val mode = summary.hvacMode ?: return null
     val status = climateStatusText(mode, summary.hvacAction)
+    if (mode == HvacMode.OFF) return status
+    val target = climateTargetText(summary, Locale.getDefault()) ?: return status
+    return "$status · ${stringResource(R.string.climate_tile_target, target)}"
+}
+
+/** "22°" or "20°–24°"; null when the device reports no setpoint. */
+fun climateTargetText(summary: TileSummary.Climate, locale: Locale = Locale.getDefault()): String? {
     val low = summary.targetTemperatureLow
     val high = summary.targetTemperatureHigh
-    val target = when {
-        mode == HvacMode.OFF -> null
-        low != null && high != null -> "${formatTemperature(low)}–${formatTemperature(high)}"
-        else -> summary.targetTemperature?.let(::formatTemperature)
+    return when {
+        low != null && high != null -> "${formatTemperature(low, locale)}–${formatTemperature(high, locale)}"
+        else -> summary.targetTemperature?.let { formatTemperature(it, locale) }
     }
-    val current = summary.currentTemperature?.let(::formatTemperature)
-    return listOfNotNull(current, listOfNotNull(status, target).joinToString(" → ")).joinToString(" · ")
 }
 
 // Close to HA's own state colors for climate modes.

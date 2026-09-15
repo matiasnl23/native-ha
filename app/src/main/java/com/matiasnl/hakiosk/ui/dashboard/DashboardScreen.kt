@@ -82,6 +82,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
 import com.matiasnl.hakiosk.ui.dashboard.tiles.entityTileGestures
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateTileContent
+import com.matiasnl.hakiosk.data.ha.domain.HvacAction
+import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.rememberBrightnessSwipeState
 import com.matiasnl.hakiosk.ui.dashboard.tiles.summaryTileColors
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -767,6 +770,10 @@ private fun entityTileColors(tile: DashboardTileUiState, summary: TileSummary, d
 
 @Composable
 private fun DashboardTileContent(tile: DashboardTileUiState, summary: TileSummary, placement: GridPlacement) {
+    if (summary is TileSummary.Climate && summary.hvacMode != null && !tile.isMissing && !tile.isUnavailable) {
+        ClimateTileContent(label = tile.label, summary = summary, wide = placement.colSpan >= 2, labelStyle = labelStyle(placement))
+        return
+    }
     val stateText = when {
         tile.isMissing -> stringResource(R.string.dashboard_state_missing)
         tile.isUnavailable -> stringResource(R.string.dashboard_state_unavailable)
@@ -1116,6 +1123,15 @@ private fun DashboardSmartTilesPreview() {
         previewEntity("light.lamp", "Lámpara", "on", isOn = true, summary = TileSummary.Light(true, null)),
         previewEntity("light.bedroom", "Dormitorio", "off", summary = TileSummary.Light(false, null)),
         previewEntity("switch.coffee_maker", "Cafetera", "off"),
+        previewEntity(
+            "climate.living", "Aire del living", "cool", colSpan = 2,
+            summary = TileSummary.Climate(HvacMode.COOL, HvacAction.COOLING, currentTemperature = 24.5, targetTemperature = 22.0),
+        ),
+        previewEntity(
+            "climate.bedroom", "Dormitorio", "heat",
+            summary = TileSummary.Climate(HvacMode.HEAT, HvacAction.IDLE, currentTemperature = 22.5, targetTemperature = 21.0),
+        ),
+        previewEntity("climate.office", "Escritorio", "off", summary = TileSummary.Climate(HvacMode.OFF, currentTemperature = 19.0)),
         previewEntity("alarm_control_panel.home", "Alarma", "disarmed", summary = TileSummary.Alarm(AlarmPanelState.DISARMED)),
         previewEntity("alarm_control_panel.garage", "Garage", "armed_away", summary = TileSummary.Alarm(AlarmPanelState.ARMED_AWAY)),
         previewEntity("alarm_control_panel.shed", "Galpón", "arming", summary = TileSummary.Alarm(AlarmPanelState.ARMING)),

@@ -22,7 +22,7 @@ import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.TriggeredPulse
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmColors
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.alarmStateText
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.tone
-import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.climateStateText
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.climateReadingDetail
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.isEmphasized
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.tint
 
@@ -36,7 +36,7 @@ fun summaryStateText(summary: TileSummary): String? = when (summary) {
         else -> stringResource(R.string.light_state_on)
     }
     is TileSummary.Alarm -> alarmStateText(summary.state)
-    is TileSummary.Climate -> climateStateText(summary)
+    is TileSummary.Climate -> climateReadingDetail(summary)
 }
 
 /** The tile's own container/content colors (e.g. an alarm's state color), or null for the default on/off colors. */
@@ -46,7 +46,8 @@ fun summaryTileColors(summary: TileSummary): TileColors? = when (summary) {
     is TileSummary.Light -> if (summary.isOn) tintColors(summary.color ?: DefaultLightTint).let { TileColors(it.track, it.content) } else null
     is TileSummary.Climate -> summary.tint()?.let { tint ->
         val colors = tintColors(tint)
-        TileColors(if (summary.isEmphasized) colors.fill else colors.track, colors.content)
+        // Softer than a light: the tile's reading and icon carry the state, the tint only hints at it.
+        TileColors(if (summary.isEmphasized) colors.medium else colors.soft, colors.content)
     }
     TileSummary.Default -> null
 }
@@ -87,7 +88,7 @@ private fun LevelFill(fraction: Float, color: Color, modifier: Modifier = Modifi
 }
 
 @Immutable
-private data class TintColors(val track: Color, val fill: Color, val content: Color)
+private data class TintColors(val track: Color, val fill: Color, val soft: Color, val medium: Color, val content: Color)
 
 /** HA's own active-light amber, for lights that report no color (brightness-only or on/off). */
 private val DefaultLightTint = Color(0xFFFFA000)
@@ -110,7 +111,13 @@ private fun tintColors(tint: Color): TintColors {
             amount -= FILL_AMOUNT_STEP
             fill = lerp(base, tint, amount)
         }
-        TintColors(track = lerp(base, tint, amount * TRACK_TO_FILL), fill = fill, content = content)
+        TintColors(
+            track = lerp(base, tint, amount * TRACK_TO_FILL),
+            fill = fill,
+            soft = lerp(base, tint, amount * SOFT_TO_FILL),
+            medium = lerp(base, tint, amount * MEDIUM_TO_FILL),
+            content = content,
+        )
     }
 }
 
@@ -121,5 +128,7 @@ private const val MAX_FILL_AMOUNT = 0.7f
 private const val MIN_FILL_AMOUNT = 0.3f
 private const val FILL_AMOUNT_STEP = 0.05f
 private const val TRACK_TO_FILL = 0.35f
+private const val SOFT_TO_FILL = 0.2f
+private const val MEDIUM_TO_FILL = 0.45f
 private const val MIN_LUMINANCE_UNDER_DARK_TEXT = 0.3f
 private const val MAX_LUMINANCE_UNDER_LIGHT_TEXT = 0.2f

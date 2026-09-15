@@ -24,6 +24,16 @@ class ClimateVisualsTest {
     }
 
     @Test
+    fun `the target reads as a single setpoint or a range`() {
+        assertEquals("22°", climateTargetText(TileSummary.Climate(HvacMode.COOL, targetTemperature = 22.0), rioplatense))
+        assertEquals(
+            "20°–24,5°",
+            climateTargetText(TileSummary.Climate(HvacMode.HEAT_COOL, targetTemperatureLow = 20.0, targetTemperatureHigh = 24.5), rioplatense),
+        )
+        assertNull(climateTargetText(TileSummary.Climate(HvacMode.FAN_ONLY), rioplatense))
+    }
+
+    @Test
     fun `off and unknown tiles have no tint`() {
         assertNull(TileSummary.Climate(HvacMode.OFF, HvacAction.OFF).tint())
         assertNull(TileSummary.Climate(null).tint())

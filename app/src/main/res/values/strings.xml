@@ -153,6 +153,7 @@
     <string name="climate_action_idle">En espera</string>
     <string name="climate_action_preheating">Precalentando</string>
     <string name="climate_state_unknown">Estado desconocido</string>
+    <string name="climate_tile_target">objetivo %1$s</string>
     <string name="climate_panel_target">Temperatura objetivo</string>
     <string name="climate_panel_target_low">Mínima</string>
     <string name="climate_panel_target_high">Máxima</string>
