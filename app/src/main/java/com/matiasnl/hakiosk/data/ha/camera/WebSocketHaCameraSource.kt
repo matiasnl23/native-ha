@@ -1,6 +1,7 @@
 package com.matiasnl.hakiosk.data.ha.camera
 
 import com.matiasnl.hakiosk.data.ha.HaConfigStore
+import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.WebSocketHaRepository
 import com.matiasnl.hakiosk.data.ha.rest.HaRestClient
 import com.matiasnl.hakiosk.data.ha.ws.HaClientSettings
@@ -28,16 +29,25 @@ class WebSocketHaCameraSource internal constructor(
     private val activeConnection: () -> HaWebSocketConnection?,
     private val configStore: HaConfigStore,
     private val restClient: HaRestClient,
+    private val go2rtcClient: FrigateGo2rtcClient,
+    /** Last known entity by id; Frigate cameras are recognized by their `client_id` attribute. */
+    private val entity: (String) -> HaEntity?,
     private val settings: HaClientSettings = HaClientSettings(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : HaCameraSource {
 
     constructor(repository: WebSocketHaRepository, configStore: HaConfigStore, okHttpClient: OkHttpClient) :
-        this(repository::activeConnection, configStore, HaRestClient(okHttpClient))
+        this(
+            activeConnection = repository::activeConnection,
+            configStore = configStore,
+            restClient = HaRestClient(okHttpClient),
+            go2rtcClient = FrigateGo2rtcClient(okHttpClient),
+            entity = { entityId -> repository.entities.value[entityId] },
+        )
 
     override suspend fun fetchSnapshot(entityId: String, width: Int?): Result<ByteArray> {
         val config = configStore.config.first()
-            ?: return Result.failure(IllegalStateException("Home Assistant is not configured"))
+            ?: return Result.failure(IllegalStateException(NOT_CONFIGURED))
         return restClient.fetchCameraSnapshot(config, entityId, width)
     }
 
@@ -99,9 +109,14 @@ class WebSocketHaCameraSource internal constructor(
         }
     }
 
-    // Contract placeholders: the Frigate proxy client replaces them.
-    override suspend fun go2rtcStreams(entityId: String): Result<List<String>> =
-        Result.failure(UnsupportedOperationException("go2rtc streams are not available yet"))
+    override suspend fun go2rtcStreams(entityId: String): Result<List<String>> {
+        val clientId = FrigateGo2rtcProtocol.clientId(entityId, entity(entityId)).getOrElse { return Result.failure(it) }
+        val config = configStore.config.first()
+            ?: return Result.failure(IllegalStateException(NOT_CONFIGURED))
+        return go2rtcClient.streams(config, clientId)
+    }
+
+    // Contract placeholder: replaced by the go2rtc signaling client.
 
     override fun go2rtcWebRtcSession(
         entityId: String,
@@ -124,6 +139,7 @@ class WebSocketHaCameraSource internal constructor(
 
     private companion object {
         const val NOT_CONNECTED = "Not connected to Home Assistant"
+        const val NOT_CONFIGURED = "Home Assistant is not configured"
         const val OFFER_FAILED = "webrtc_offer_failed"
     }
 }
