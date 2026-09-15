@@ -5,11 +5,10 @@ import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcClientConfig
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
-import org.webrtc.SurfaceViewRenderer
 
 class FakeRemoteVideoTrack(val name: String = "video") : RemoteVideoTrack {
-    override fun bind(renderer: SurfaceViewRenderer): Boolean = false
-    override fun unbind(renderer: SurfaceViewRenderer) = Unit
+    override fun bind(renderer: VideoRenderer): Boolean = false
+    override fun unbind(renderer: VideoRenderer) = Unit
 }
 
 /** Peer that records every call in [log] and lets the test emit libwebrtc events. */

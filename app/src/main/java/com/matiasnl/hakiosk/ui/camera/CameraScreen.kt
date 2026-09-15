@@ -58,9 +58,9 @@ import com.matiasnl.hakiosk.camera.thumbnail.CameraSnapshot
 import com.matiasnl.hakiosk.camera.thumbnail.CameraSnapshotRepository
 import com.matiasnl.hakiosk.camera.thumbnail.FOCUS_SNAPSHOT_REFRESH_INTERVAL_MS
 import com.matiasnl.hakiosk.camera.webrtc.CameraStreamError
+import com.matiasnl.hakiosk.camera.webrtc.FitSurfaceViewRenderer
 import com.matiasnl.hakiosk.camera.webrtc.RemoteVideoTrack
 import com.matiasnl.hakiosk.ui.theme.HAKioskTheme
-import org.webrtc.SurfaceViewRenderer
 
 /** Snapshots for the fallback are requested at most this wide; enough for a tablet, bounded RAM for 4K cameras. */
 private const val MAX_FALLBACK_SNAPSHOT_WIDTH_PX = 1280
@@ -160,7 +160,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 private fun WebRtcVideo(video: RemoteVideoTrack, modifier: Modifier = Modifier) {
     key(video) {
         AndroidView(
-            factory = { context -> SurfaceViewRenderer(context).also { video.bind(it) } },
+            factory = { context -> FitSurfaceViewRenderer(context).also { video.bind(it) } },
             onRelease = { renderer -> video.unbind(renderer) },
             modifier = modifier.wrapContentSize(),
         )

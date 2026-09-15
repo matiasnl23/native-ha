@@ -19,12 +19,10 @@ import org.webrtc.MediaStream
 import org.webrtc.MediaStreamTrack
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
-import org.webrtc.RendererCommon
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import org.webrtc.SoftwareVideoEncoderFactory
-import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoSink
 import org.webrtc.VideoTrack
 import org.webrtc.audio.JavaAudioDeviceModule
@@ -35,7 +33,7 @@ private const val TAG = "HaKioskWebRtc"
 
 /**
  * Root EGL context shared by the hardware decoder and the renderer. Reference counted so it lives
- * exactly as long as a peer or a bound renderer uses it, and is released when the focus view closes.
+ * exactly as long as a peer or a bound renderer uses it, and is released when the last live view closes.
  */
 internal class SharedEglBase {
     private var eglBase: EglBase? = null
@@ -63,21 +61,19 @@ internal class LibWebRtcVideoTrack(
     private val track: VideoTrack,
     private val sharedEgl: SharedEglBase,
 ) : RemoteVideoTrack {
-    private val boundRenderers = mutableSetOf<SurfaceViewRenderer>()
+    private val boundRenderers = mutableSetOf<VideoRenderer>()
     private var disposed = false
 
     @Synchronized
-    override fun bind(renderer: SurfaceViewRenderer): Boolean {
+    override fun bind(renderer: VideoRenderer): Boolean {
         if (disposed || renderer in boundRenderers) return false
-        renderer.init(sharedEgl.acquire(), null)
-        renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
-        renderer.setEnableHardwareScaler(true)
+        renderer.initRenderer(sharedEgl.acquire())
         track.addSink(renderer)
         boundRenderers += renderer
         return true
     }
 
-    override fun unbind(renderer: SurfaceViewRenderer) {
+    override fun unbind(renderer: VideoRenderer) {
         val wasBound = synchronized(this) {
             val removed = boundRenderers.remove(renderer)
             if (removed && !disposed) track.removeSink(renderer)

@@ -3,7 +3,6 @@ package com.matiasnl.hakiosk.camera.webrtc
 import com.matiasnl.hakiosk.data.ha.camera.HaIceCandidate
 import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcClientConfig
 import kotlinx.coroutines.flow.Flow
-import org.webrtc.SurfaceViewRenderer
 
 /**
  * Remote video of one peer connection, as seen by the UI. Rendering goes through [bind]/[unbind]
@@ -15,10 +14,10 @@ interface RemoteVideoTrack {
      * when the track is already gone (the session closed meanwhile); the renderer is then untouched.
      * Main thread only.
      */
-    fun bind(renderer: SurfaceViewRenderer): Boolean
+    fun bind(renderer: VideoRenderer): Boolean
 
     /** Stops feeding [renderer], releases it and drops its EGL reference. Safe after the peer closed. Main thread only. */
-    fun unbind(renderer: SurfaceViewRenderer)
+    fun unbind(renderer: VideoRenderer)
 }
 
 enum class PeerIceState { CHECKING, CONNECTED, DISCONNECTED, FAILED, CLOSED }
