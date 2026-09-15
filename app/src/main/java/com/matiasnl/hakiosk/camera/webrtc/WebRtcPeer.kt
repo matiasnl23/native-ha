@@ -40,7 +40,7 @@ sealed interface PeerEvent {
 }
 
 /**
- * A receive-only WebRTC peer connection (video + audio transceivers). Abstracted so the signaling
+ * A receive-only WebRTC peer connection (video and optionally audio transceivers). Abstracted so the signaling
  * state machine in [WebRtcSessionManager] runs on the JVM with a fake.
  *
  * Not thread-safe for concurrent signaling calls: the session manager drives it from one coroutine.
@@ -64,6 +64,9 @@ interface WebRtcPeer {
 }
 
 fun interface WebRtcPeerFactory {
-    /** May throw (e.g. native library missing on an unsupported ABI). */
-    fun create(config: HaWebRtcClientConfig): WebRtcPeer
+    /**
+     * Creates a recvonly peer with a video transceiver and, if [receiveAudio], an audio one.
+     * May throw (e.g. native library missing on an unsupported ABI).
+     */
+    fun create(config: HaWebRtcClientConfig, receiveAudio: Boolean): WebRtcPeer
 }

@@ -3,6 +3,7 @@ package com.matiasnl.hakiosk.camera.webrtc
 import com.matiasnl.hakiosk.data.ha.camera.CameraLiveSource
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
 import com.matiasnl.hakiosk.data.ha.camera.HaIceCandidate
+import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcClientConfig
 import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -28,11 +30,14 @@ const val WEBRTC_DISCONNECT_GRACE_MS = 4_000L
 const val WEBRTC_MAX_RECONNECTS = 1
 
 /**
- * Owns the one WebRTC camera session allowed app-wide (tablets with 2-4 GB RAM can't afford more).
+ * Owns at most one WebRTC camera session. The app-wide instance in `CameraModule` is the focus view's
+ * single session; live thumbnails get their own instances, each also limited to one session.
  *
  * Signaling: [HaCameraSource.webRtcClientConfig] → peer with those ICE servers → recvonly offer →
- * [HaCameraSource.webRtcSession]. Local ICE candidates are buffered until HA assigns a session id;
- * remote candidates are buffered until the answer is applied.
+ * [HaCameraSource.webRtcSession] for [CameraLiveSource.HomeAssistant], or
+ * [HaCameraSource.go2rtcWebRtcSession] for [CameraLiveSource.Go2rtc]. On the HA path local ICE
+ * candidates are buffered until HA assigns a session id; go2rtc pulls them from a queue as soon as its
+ * socket is open. Remote candidates are buffered until the answer is applied.
  *
  * [start] always tears down the previous peer (and waits for it to be closed) before creating a new
  * one; [stop] cancels the session and the peer is closed right after on [scope]. All peer calls happen
@@ -45,6 +50,8 @@ class WebRtcSessionManager(
     private val mediaTimeoutMillis: Long = WEBRTC_MEDIA_TIMEOUT_MS,
     private val disconnectGraceMillis: Long = WEBRTC_DISCONNECT_GRACE_MS,
     private val maxReconnects: Int = WEBRTC_MAX_RECONNECTS,
+    /** False negotiates video only: no audio decoding or playout (live thumbnails are always silent). */
+    private val receiveAudio: Boolean = true,
     /** Diagnostics sink (Logcat in the app); kept as a lambda so the class stays JVM-testable. */
     private val log: (String) -> Unit = {},
 ) {
@@ -64,8 +71,12 @@ class WebRtcSessionManager(
     @Volatile
     private var activePeer: WebRtcPeer? = null
 
-    /** Starts streaming [entityId], closing any other session first. Restarts if already running. */
-    fun start(entityId: String) {
+    /** Starts streaming Home Assistant's own stream of [entityId]; see [start]. */
+    fun start(entityId: String) = start(CameraLiveSource.HomeAssistant(entityId))
+
+    /** Starts streaming [source], closing any other session first. Restarts if already running. */
+    fun start(source: CameraLiveSource) {
+        val entityId = source.entityId
         synchronized(lock) {
             val previous = sessionJob
             previous?.cancel()
@@ -76,16 +87,10 @@ class WebRtcSessionManager(
             _state.value = CameraStreamState.Connecting(entityId)
             sessionJob = scope.launch {
                 previous?.cancelAndJoin()
-                runSession(token, entityId)
+                runSession(token, source)
             }
         }
     }
-
-    /**
-     * Starts streaming [source]. Contract placeholder: plays Home Assistant's own stream until the
-     * go2rtc path is wired in.
-     */
-    fun start(source: CameraLiveSource) = start(source.entityId)
 
     /**
      * Stops the session. With [entityId], only stops if that camera is the current one, so a screen
@@ -108,11 +113,12 @@ class WebRtcSessionManager(
         _state.update { if (it is CameraStreamState.Playing) it.copy(muted = muted) else it }
     }
 
-    private suspend fun runSession(token: Any, entityId: String) {
+    private suspend fun runSession(token: Any, liveSource: CameraLiveSource) {
+        val entityId = liveSource.entityId
         var reconnects = 0
         while (true) {
             publish(token, CameraStreamState.Connecting(entityId))
-            val failure = runAttempt(token, entityId)
+            val failure = runAttempt(token, liveSource)
             if (failure.reachedMedia) reconnects = 0
             if (failure.retryable && reconnects < maxReconnects) {
                 reconnects++
@@ -135,11 +141,21 @@ class WebRtcSessionManager(
         val reachedMedia: Boolean = false,
     )
 
-    private suspend fun runAttempt(token: Any, entityId: String): AttemptFailure {
-        val config = callSource { source.webRtcClientConfig(entityId) }
-            .getOrElse { return AttemptFailure(CameraStreamError.Setup("ICE config: ${it.message}")) }
+    private suspend fun runAttempt(token: Any, liveSource: CameraLiveSource): AttemptFailure {
+        val entityId = liveSource.entityId
+        val config = callSource { source.webRtcClientConfig(entityId) }.getOrElse {
+            when (liveSource) {
+                is CameraLiveSource.HomeAssistant ->
+                    return AttemptFailure(CameraStreamError.Setup("ICE config: ${it.message}"))
+                // go2rtc usually answers with host candidates reachable on the LAN; try without STUN/TURN.
+                is CameraLiveSource.Go2rtc -> {
+                    log("ICE config unavailable, trying go2rtc without ICE servers: ${it.message}")
+                    HaWebRtcClientConfig(emptyList())
+                }
+            }
+        }
         val peer = try {
-            peerFactory.create(config)
+            peerFactory.create(config, receiveAudio)
         } catch (e: Exception) {
             return AttemptFailure(CameraStreamError.Setup("Peer connection: ${e.message}"))
         } catch (e: LinkageError) {
@@ -149,7 +165,7 @@ class WebRtcSessionManager(
         activePeer = peer
         try {
             return coroutineScope {
-                val failure = eventLoop(token, entityId, peer)
+                val failure = eventLoop(token, liveSource, peer)
                 coroutineContext.cancelChildren()
                 failure
             }
@@ -167,16 +183,30 @@ class WebRtcSessionManager(
         data object DisconnectTimeout : Signal
     }
 
-    private suspend fun CoroutineScope.eventLoop(token: Any, entityId: String, peer: WebRtcPeer): AttemptFailure {
+    private suspend fun CoroutineScope.eventLoop(
+        token: Any,
+        liveSource: CameraLiveSource,
+        peer: WebRtcPeer,
+    ): AttemptFailure {
+        val entityId = liveSource.entityId
         val inbox = Channel<Signal>(Channel.UNLIMITED)
         launch { peer.events.collect { inbox.send(Signal.Peer(it)) } }
 
         val offer = peer.createOffer()
             .getOrElse { return AttemptFailure(CameraStreamError.Setup("Offer: ${it.message}")) }
 
+        // go2rtc only: local candidates queued for the signaling flow, which sends them while collected.
+        // Dropped with this attempt's scope; never read by a later attempt.
+        val go2rtcLocalCandidates = (liveSource as? CameraLiveSource.Go2rtc)?.let { Channel<HaIceCandidate>(Channel.UNLIMITED) }
+        val signaling = when (liveSource) {
+            is CameraLiveSource.HomeAssistant -> source.webRtcSession(entityId, offer)
+            is CameraLiveSource.Go2rtc ->
+                source.go2rtcWebRtcSession(entityId, liveSource.stream, offer, go2rtcLocalCandidates!!.receiveAsFlow())
+        }
+
         launch {
             try {
-                source.webRtcSession(entityId, offer).collect { inbox.send(Signal.Ha(it)) }
+                signaling.collect { inbox.send(Signal.Ha(it)) }
                 inbox.send(Signal.SignalingEnded(null))
             } catch (e: CancellationException) {
                 throw e
@@ -245,7 +275,9 @@ class WebRtcSessionManager(
                     }
                 }
                 is Signal.Peer -> when (val event = signal.event) {
-                    is PeerEvent.LocalCandidate -> {
+                    is PeerEvent.LocalCandidate -> if (go2rtcLocalCandidates != null) {
+                        go2rtcLocalCandidates.trySend(event.candidate)
+                    } else {
                         val id = sessionId
                         if (id != null) sendLocal(id, event.candidate) else pendingLocal += event.candidate
                     }

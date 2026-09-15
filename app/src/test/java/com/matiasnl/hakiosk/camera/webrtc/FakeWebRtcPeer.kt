@@ -13,7 +13,11 @@ class FakeRemoteVideoTrack(val name: String = "video") : RemoteVideoTrack {
 }
 
 /** Peer that records every call in [log] and lets the test emit libwebrtc events. */
-class FakeWebRtcPeer(val config: HaWebRtcClientConfig, private val offerSdp: String) : WebRtcPeer {
+class FakeWebRtcPeer(
+    val config: HaWebRtcClientConfig,
+    private val offerSdp: String,
+    val receiveAudio: Boolean = true,
+) : WebRtcPeer {
     private val channel = Channel<PeerEvent>(Channel.UNLIMITED)
     override val events: Flow<PeerEvent> = channel.receiveAsFlow()
 
@@ -65,9 +69,9 @@ class FakeWebRtcPeerFactory : WebRtcPeerFactory {
 
     val lastPeer: FakeWebRtcPeer get() = peers.last()
 
-    override fun create(config: HaWebRtcClientConfig): WebRtcPeer {
+    override fun create(config: HaWebRtcClientConfig, receiveAudio: Boolean): WebRtcPeer {
         failWith?.let { throw it }
         openPeersAtCreation += peers.count { !it.isClosed }
-        return FakeWebRtcPeer(config, offerSdp = "offer-${peers.size + 1}").also { peers += it }
+        return FakeWebRtcPeer(config, offerSdp = "offer-${peers.size + 1}", receiveAudio).also { peers += it }
     }
 }

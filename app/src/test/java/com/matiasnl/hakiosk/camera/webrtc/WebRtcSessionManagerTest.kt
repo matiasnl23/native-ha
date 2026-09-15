@@ -2,6 +2,7 @@ package com.matiasnl.hakiosk.camera.webrtc
 
 import com.matiasnl.hakiosk.camera.ScriptedHaCameraSource
 import com.matiasnl.hakiosk.camera.SentCandidate
+import com.matiasnl.hakiosk.data.ha.camera.CameraLiveSource
 import com.matiasnl.hakiosk.data.ha.camera.HaIceCandidate
 import com.matiasnl.hakiosk.data.ha.camera.HaWebRtcEvent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,14 +23,17 @@ class WebRtcSessionManagerTest {
     private val source = ScriptedHaCameraSource()
     private val factory = FakeWebRtcPeerFactory()
 
-    private fun TestScope.manager() = WebRtcSessionManager(
+    private fun TestScope.manager(receiveAudio: Boolean = true) = WebRtcSessionManager(
         source = source,
         peerFactory = factory,
         scope = backgroundScope,
         mediaTimeoutMillis = 15_000,
         disconnectGraceMillis = 4_000,
         maxReconnects = 1,
+        receiveAudio = receiveAudio,
     )
+
+    private val go2rtc = CameraLiveSource.Go2rtc(CAMERA, "front_sub")
 
     private fun candidate(value: String) = HaIceCandidate("candidate:$value", "0", 0)
 
@@ -319,5 +323,188 @@ class WebRtcSessionManagerTest {
         assertEquals(2, factory.peers.size)
         assertEquals(CameraStreamState.Connecting(CAMERA), manager.state.value)
         assertEquals(1, factory.peers.count { !it.isClosed })
+    }
+
+    // --- go2rtc through the Frigate proxy ---
+
+    @Test
+    fun `go2rtc source opens a go2rtc session with the offer and never uses the HA signaling`() = runTest {
+        val manager = manager()
+
+        manager.start(go2rtc)
+        assertEquals(CameraStreamState.Connecting(CAMERA), manager.state.value)
+        runCurrent()
+
+        val session = source.sessions.single()
+        assertEquals(CAMERA, session.entityId)
+        assertEquals("front_sub", session.stream)
+        assertEquals("offer-1", session.offerSdp)
+        assertEquals("stun:stun.example.org:3478", factory.lastPeer.config.iceServers.single().urls.single())
+
+        session.send(HaWebRtcEvent.Answer("answer-sdp"))
+        session.send(HaWebRtcEvent.RemoteCandidate(candidate("r1")))
+        runCurrent()
+        assertEquals(listOf("offer", "answer:answer-sdp", "candidate:candidate:r1"), factory.lastPeer.log)
+
+        val video = FakeRemoteVideoTrack()
+        factory.lastPeer.emit(PeerEvent.VideoTrackAdded(video))
+        factory.lastPeer.emit(PeerEvent.FirstVideoFrame)
+        runCurrent()
+        assertEquals(CameraStreamState.Playing(CAMERA, video, hasAudio = false, muted = true), manager.state.value)
+        assertTrue(source.sentCandidates.isEmpty())
+    }
+
+    @Test
+    fun `go2rtc local candidates are forwarded before and after the answer`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+        val peer = factory.lastPeer
+        val session = source.sessions.single()
+
+        peer.emit(PeerEvent.LocalCandidate(candidate("a")))
+        peer.emit(PeerEvent.LocalCandidate(candidate("b")))
+        runCurrent()
+        assertEquals(listOf(candidate("a"), candidate("b")), session.localCandidates.toList())
+
+        session.send(HaWebRtcEvent.Answer("answer-sdp"))
+        peer.emit(PeerEvent.LocalCandidate(candidate("c")))
+        runCurrent()
+        assertEquals(listOf(candidate("a"), candidate("b"), candidate("c")), session.localCandidates.toList())
+        assertTrue(source.sentCandidates.isEmpty())
+    }
+
+    @Test
+    fun `go2rtc blank remote candidate is ignored`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+        val session = source.sessions.single()
+
+        session.send(HaWebRtcEvent.Answer("answer-sdp"))
+        session.send(HaWebRtcEvent.RemoteCandidate(HaIceCandidate("", "0", 0)))
+        runCurrent()
+
+        assertEquals(listOf("offer", "answer:answer-sdp"), factory.lastPeer.log)
+    }
+
+    @Test
+    fun `go2rtc error fails the session and releases the peer and the socket`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+
+        source.sessions.single().send(HaWebRtcEvent.Error("stream_not_found", "streams: unknown src"))
+        runCurrent()
+
+        assertEquals(
+            CameraStreamState.Failed(CAMERA, CameraStreamError.Signaling("stream_not_found", "streams: unknown src")),
+            manager.state.value,
+        )
+        assertTrue(factory.lastPeer.isClosed)
+        assertFalse(source.sessions.single().isActive)
+        assertEquals(1, factory.peers.size)
+    }
+
+    @Test
+    fun `go2rtc socket closing before the answer fails the session`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+
+        source.sessions.single().end()
+        runCurrent()
+
+        val state = manager.state.value as CameraStreamState.Failed
+        assertTrue(state.error is CameraStreamError.Signaling)
+        assertTrue(factory.lastPeer.isClosed)
+    }
+
+    @Test
+    fun `go2rtc without an ICE config still connects with no ICE servers`() = runTest {
+        source.clientConfigResult = Result.failure(IllegalStateException("not connected"))
+        val manager = manager()
+
+        manager.start(go2rtc)
+        runCurrent()
+
+        assertTrue(factory.lastPeer.config.iceServers.isEmpty())
+        assertEquals("front_sub", source.sessions.single().stream)
+        assertEquals(CameraStreamState.Connecting(CAMERA), manager.state.value)
+    }
+
+    @Test
+    fun `go2rtc no video within the timeout fails the session`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+        source.sessions.single().send(HaWebRtcEvent.Answer("answer-sdp"))
+
+        advanceTimeBy(15_001)
+        runCurrent()
+
+        assertEquals(CameraStreamState.Failed(CAMERA, CameraStreamError.Timeout(15_000)), manager.state.value)
+        assertTrue(factory.lastPeer.isClosed)
+        assertFalse(source.sessions.single().isActive)
+    }
+
+    @Test
+    fun `go2rtc ICE failure reconnects with a new go2rtc session`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+        source.sessions.single().send(HaWebRtcEvent.Answer("answer-sdp"))
+        runCurrent()
+
+        factory.lastPeer.emit(PeerEvent.IceStateChanged(PeerIceState.FAILED))
+        runCurrent()
+
+        assertEquals(2, factory.peers.size)
+        assertTrue(factory.peers[0].isClosed)
+        assertFalse(source.sessions[0].isActive)
+        assertEquals(listOf("front_sub", "front_sub"), source.sessions.map { it.stream })
+        assertEquals("offer-2", source.sessions[1].offerSdp)
+        assertEquals(CameraStreamState.Connecting(CAMERA), manager.state.value)
+    }
+
+    @Test
+    fun `go2rtc stop releases the peer and closes the socket`() = runTest {
+        val manager = manager()
+        manager.start(go2rtc)
+        runCurrent()
+        source.sessions.single().send(HaWebRtcEvent.Answer("answer-sdp"))
+        runCurrent()
+
+        manager.stop(CAMERA)
+        assertEquals(CameraStreamState.Idle, manager.state.value)
+        runCurrent()
+
+        assertTrue(factory.lastPeer.isClosed)
+        assertFalse(source.sessions.single().isActive)
+    }
+
+    @Test
+    fun `switching from HA stream to go2rtc stream of the same camera keeps a single open peer`() = runTest {
+        val manager = manager()
+        connect(manager)
+        val first = factory.lastPeer
+
+        manager.start(go2rtc)
+        runCurrent()
+
+        assertTrue(first.isClosed)
+        assertEquals(listOf(null, "front_sub"), source.sessions.map { it.stream })
+        assertEquals(1, factory.peers.count { !it.isClosed })
+        assertEquals(listOf(0, 0), factory.openPeersAtCreation)
+    }
+
+    @Test
+    fun `video-only manager creates peers without audio`() = runTest {
+        val manager = manager(receiveAudio = false)
+
+        manager.start(go2rtc)
+        runCurrent()
+
+        assertFalse(factory.lastPeer.receiveAudio)
     }
 }

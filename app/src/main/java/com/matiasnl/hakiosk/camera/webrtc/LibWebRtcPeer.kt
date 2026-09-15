@@ -104,7 +104,7 @@ class LibWebRtcPeerFactory(context: Context) : WebRtcPeerFactory {
     private val sharedEgl = SharedEglBase()
     private var initialized = false
 
-    override fun create(config: HaWebRtcClientConfig): WebRtcPeer {
+    override fun create(config: HaWebRtcClientConfig, receiveAudio: Boolean): WebRtcPeer {
         synchronized(this) {
             if (!initialized) {
                 PeerConnectionFactory.initialize(
@@ -113,7 +113,7 @@ class LibWebRtcPeerFactory(context: Context) : WebRtcPeerFactory {
                 initialized = true
             }
         }
-        return LibWebRtcPeer(appContext, config, sharedEgl)
+        return LibWebRtcPeer(appContext, config, receiveAudio, sharedEgl)
     }
 }
 
@@ -124,6 +124,7 @@ class LibWebRtcPeerFactory(context: Context) : WebRtcPeerFactory {
 internal class LibWebRtcPeer(
     context: Context,
     config: HaWebRtcClientConfig,
+    receiveAudio: Boolean,
     private val sharedEgl: SharedEglBase,
 ) : WebRtcPeer {
     private val eventChannel = Channel<PeerEvent>(Channel.UNLIMITED)
@@ -225,9 +226,14 @@ internal class LibWebRtcPeer(
 
             val recvOnly = RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
             val videoTransceiver = peerConnection.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, recvOnly)
-            val audioTransceiver = peerConnection.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, recvOnly)
+            // Without an audio m-line the remote never sends audio, so nothing is decoded or played out.
+            val audioTransceiver = if (receiveAudio) {
+                peerConnection.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_AUDIO, recvOnly)
+            } else {
+                null
+            }
             remoteVideoTrack = videoTransceiver.receiver.track() as VideoTrack
-            remoteAudioTrack = audioTransceiver.receiver.track() as? AudioTrack
+            remoteAudioTrack = audioTransceiver?.receiver?.track() as? AudioTrack
             remoteAudioTrack?.setEnabled(false) // Muted by default.
             videoHandle = LibWebRtcVideoTrack(remoteVideoTrack, sharedEgl)
             remoteVideoTrack.addSink(firstFrameSink)
