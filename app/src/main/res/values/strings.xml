@@ -212,6 +212,25 @@
     <string name="edit_tile_tap_action_toggle_hint">Un toque enciende o apaga. Mantené presionado el botón para abrir los controles.</string>
     <string name="edit_tile_tap_action_open_details_hint">Un toque abre los controles.</string>
 
+    <!-- Camera options section (edit tile modal) -->
+    <string name="camera_options_title">Cámara</string>
+    <string name="camera_option_focus_stream">Pantalla completa</string>
+    <string name="camera_option_focus_stream_hint">Elegir un stream lo reproduce a través de go2rtc en Frigate; la tablet tiene que poder llegar a Frigate.</string>
+    <string name="camera_option_thumbnail_title">Miniatura</string>
+    <string name="camera_option_live_switch">Video en vivo</string>
+    <string name="camera_option_live_hint">Cada miniatura en vivo abre su propia conexión de video mientras está en pantalla. Conviene elegir un stream de baja resolución (sub).</string>
+    <string name="camera_option_thumbnail_stream">Stream de la miniatura</string>
+    <string name="camera_option_refresh_seconds">Actualizar cada (segundos)</string>
+    <string name="camera_option_refresh_seconds_placeholder">10</string>
+    <string name="camera_option_refresh_seconds_hint">Vacío usa 10 s.</string>
+    <string name="camera_option_refresh_seconds_too_low">Mínimo %1$d s.</string>
+    <string name="camera_option_snapshot_hint">Las miniaturas periódicas siempre usan la captura de cámara de Home Assistant: Frigate 0.18 no ofrece fotogramas por stream.</string>
+    <string name="camera_stream_default">Predeterminado de Home Assistant</string>
+    <string name="camera_stream_manual">Otro…</string>
+    <string name="camera_stream_manual_name">Nombre del stream</string>
+    <string name="camera_stream_loading">Cargando streams…</string>
+    <string name="camera_stream_load_failed">No se pudo obtener la lista de streams de Frigate. Podés escribir el nombre.</string>
+
     <!-- Add tile modal -->
     <string name="add_tile_title">Agregar botón</string>
     <string name="add_tile_option_entity">Entidad</string>

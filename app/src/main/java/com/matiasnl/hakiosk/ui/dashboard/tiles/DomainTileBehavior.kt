@@ -89,12 +89,20 @@ interface DomainTileBehavior {
     fun editSections(
         options: TileEditOptions,
         onOptionsChange: (TileEditOptions) -> Unit,
-    ): List<@Composable () -> Unit> =
+    ): List<@Composable () -> Unit> = buildList {
         if (offersTapActionChoice) {
-            listOf { TapActionSection(options.tapAction) { onOptionsChange(options.copy(tapAction = it)) } }
-        } else {
-            emptyList()
+            add { TapActionSection(options.tapAction) { onOptionsChange(options.copy(tapAction = it)) } }
         }
+        if (offersCameraOptions) {
+            add {
+                CameraOptionsSection(
+                    entityId = options.entityId,
+                    options = options.camera ?: CameraTileOptions(),
+                    onOptionsChange = { onOptionsChange(options.copy(camera = it)) },
+                )
+            }
+        }
+    }
 }
 
 /** Read-only tiles (sensors, binary sensors, anything unknown): taps are no-ops. */
@@ -112,9 +120,10 @@ object TurnOnTileBehavior : DomainTileBehavior {
     override val tapAction: TileAction = TileAction.TURN_ON
 }
 
-/** Cameras: a tap opens the focus view. */
+/** Cameras: a tap opens the focus view; the edit modal offers per-tile stream/thumbnail options. */
 object CameraTileBehavior : DomainTileBehavior {
     override val tapAction: TileAction = TileAction.OPEN_CAMERA
+    override val offersCameraOptions: Boolean = true
 }
 
 /** Registry of per-domain tile behaviors. */

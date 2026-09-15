@@ -137,9 +137,11 @@ class DomainTileBehaviorsTest {
 
         assertEquals(1, sectionsOf("light").size)
         assertEquals(1, sectionsOf("climate").size)
+        assertEquals(1, sectionsOf("camera").size)
         assertTrue(DomainTileBehaviors.forDomain("climate").offersStyleChoice)
+        assertTrue(DomainTileBehaviors.forDomain("camera").offersCameraOptions)
         assertFalse(DomainTileBehaviors.forDomain("light").offersStyleChoice)
-        listOf("alarm_control_panel", "switch", "scene", "camera", "sensor").forEach { domain ->
+        listOf("alarm_control_panel", "switch", "scene", "sensor").forEach { domain ->
             assertTrue(domain, sectionsOf(domain).isEmpty())
         }
     }
