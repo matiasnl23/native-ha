@@ -7,6 +7,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.FakeDashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.TileContent
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -206,6 +207,24 @@ class DashboardEditControllerTest {
         controller.cancel()
 
         assertNull(controller.state.value.working)
+        assertEquals(layout, store.layout.value)
+    }
+
+    @Test
+    fun `setStyle changes an entity tile in the working copy only and keeps its tap action`() {
+        val (controller, store, _) = controller()
+        controller.enter(layout, "main")
+
+        controller.setTapAction("a", TileTapAction.OPEN_DETAILS)
+        controller.setStyle("a", TileStyle.QUICK_ADJUST)
+        controller.setStyle("b", TileStyle.QUICK_ADJUST) // A spacer has no style.
+
+        val working = controller.state.value.working!!
+        assertEquals(
+            TileContent.Entity("light.a", tapAction = TileTapAction.OPEN_DETAILS, style = TileStyle.QUICK_ADJUST),
+            working.views[0].tiles[0].content,
+        )
+        assertEquals(TileContent.Spacer, working.views[0].tiles[1].content)
         assertEquals(layout, store.layout.value)
     }
 

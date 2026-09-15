@@ -59,6 +59,34 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `tile style round-trips, the default is not written, and an unknown style falls back to DEFAULT`() {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "v1",
+                    name = "Principal",
+                    tiles = listOf(
+                        DashboardTile("a", TileContent.Entity("climate.a")),
+                        DashboardTile("b", TileContent.Entity("climate.b", style = TileStyle.QUICK_ADJUST)),
+                    ),
+                ),
+            ),
+        )
+
+        val json = DashboardLayoutJsonMapper.encode(layout)
+        val decoded = DashboardLayoutJsonMapper.decode(newFormatJson = json, legacyTilesJson = null)
+
+        assertEquals(layout, decoded.layout)
+        assertTrue(json.contains("\"style\":\"quick_adjust\""))
+        assertEquals(1, Regex("\"style\"").findAll(json).count())
+
+        val fromNewerApp = json.replace("quick_adjust", "hologram")
+        val tiles = DashboardLayoutJsonMapper.decode(newFormatJson = fromNewerApp, legacyTilesJson = null).layout.views.single().tiles
+        assertEquals(listOf("a", "b"), tiles.map { it.id })
+        assertEquals(TileStyle.DEFAULT, (tiles[1].content as TileContent.Entity).style)
+    }
+
+    @Test
     fun `stored json from before the tap action existed decodes as DEFAULT`() {
         val stage5Json = """
             {"version":1,"views":[{"id":"v1","name":"Principal","grid":{"columns":4,"rows":3},"tiles":[

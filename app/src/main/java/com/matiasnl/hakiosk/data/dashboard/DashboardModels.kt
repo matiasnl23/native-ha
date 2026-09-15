@@ -56,7 +56,8 @@ sealed interface TileContent {
     /**
      * A Home Assistant entity button. [label] overrides the entity's friendly name when not null.
      * [tapAction] is the tile's own tap preference; stored JSON from before it existed decodes as
-     * [TileTapAction.DEFAULT], and the default is never written.
+     * [TileTapAction.DEFAULT], and the default is never written. [style] works the same way with
+     * [TileStyle.DEFAULT].
      */
     @Serializable
     @SerialName("entity")
@@ -64,6 +65,7 @@ sealed interface TileContent {
         val entityId: String,
         val label: String? = null,
         val tapAction: TileTapAction = TileTapAction.DEFAULT,
+        val style: TileStyle = TileStyle.DEFAULT,
     ) : TileContent
 
     /** Navigates to another [DashboardView] when tapped. */
@@ -94,6 +96,21 @@ enum class TileTapAction {
     /** Open the domain's details panel. */
     @SerialName("open_details")
     OPEN_DETAILS,
+}
+
+/**
+ * How an entity tile presents itself, as chosen per tile in the edit modal. Only domains that offer a
+ * style choice (e.g. climate) read it; other domains ignore it.
+ */
+@Serializable
+enum class TileStyle {
+    /** The domain's own presentation. */
+    @SerialName("default")
+    DEFAULT,
+
+    /** Adjustment buttons on the tile itself (e.g. a climate setpoint's − and +). */
+    @SerialName("quick_adjust")
+    QUICK_ADJUST,
 }
 
 /** Valid range for grid columns/rows and tile spans. */

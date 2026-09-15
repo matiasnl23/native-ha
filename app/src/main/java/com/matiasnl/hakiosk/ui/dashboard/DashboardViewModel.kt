@@ -24,6 +24,7 @@ import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacker
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPacking
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehavior
 import com.matiasnl.hakiosk.ui.dashboard.tiles.DomainTileBehaviors
@@ -95,6 +96,8 @@ data class DashboardTileUiState(
     val defaultLabel: String = label,
     /** The tile's stored tap preference. */
     val tapAction: TileTapAction = TileTapAction.DEFAULT,
+    /** The tile's stored style; only domains that offer a style choice read it. */
+    val style: TileStyle = TileStyle.DEFAULT,
     /** True when a long press (outside edit mode) opens a details panel: the domain has one and the entity exists. */
     val hasDetails: Boolean = false,
     /** Domain-specific summary (e.g. a light's brightness); [TileSummary.Default] shows the raw state. */
@@ -470,6 +473,8 @@ class DashboardViewModel(
     /** Working copy only, like every edit-modal field: persisted by Listo, discarded by Cancelar. */
     fun setEditTileTapAction(tileId: String, tapAction: TileTapAction) = editController.setTapAction(tileId, tapAction)
 
+    fun setEditTileStyle(tileId: String, style: TileStyle) = editController.setStyle(tileId, style)
+
     fun removeEditTile(tileId: String) = editController.removeTile(tileId)
 
     fun setEditGrid(grid: DashboardGrid) = editController.setGrid(grid)
@@ -699,6 +704,7 @@ class DashboardViewModel(
             rawLabel = label,
             defaultLabel = fallbackLabel,
             tapAction = tapAction,
+            style = style,
             hasDetails = entity != null && behavior.details != null,
             summary = if (entity != null) summaryFor(behavior, entity) else TileSummary.Default,
         )

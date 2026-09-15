@@ -23,6 +23,7 @@ import com.matiasnl.hakiosk.data.ha.HaServerConfig
 import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsRequest
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
@@ -651,6 +652,23 @@ class DashboardViewModelTest {
         viewModel.setEditTileTapAction(tileId, TileTapAction.OPEN_DETAILS)
         viewModel.doneEditMode()
         assertEquals(TileTapAction.OPEN_DETAILS, storedTapAction())
+    }
+
+    @Test
+    fun `a style change goes to the working copy and Listo persists it`() = runTest {
+        val (viewModel, layoutStore) = editingViewModel()
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        fun storedStyle() = (layoutStore.layout.value.views.single().tiles.single().content as TileContent.Entity).style
+
+        viewModel.enterEditMode()
+        val tileId = viewModel.uiState.value.entityTiles().single().id
+        viewModel.setEditTileStyle(tileId, TileStyle.QUICK_ADJUST)
+
+        assertEquals(TileStyle.QUICK_ADJUST, viewModel.uiState.value.entityTiles().single().style)
+        assertEquals(TileStyle.DEFAULT, storedStyle())
+
+        viewModel.doneEditMode()
+        assertEquals(TileStyle.QUICK_ADJUST, storedStyle())
     }
 
     @Test
