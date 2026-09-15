@@ -1,6 +1,7 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import androidx.compose.runtime.Composable
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.ui.dashboard.tiles.alarm.AlarmTileBehavior
@@ -46,6 +47,9 @@ interface DomainTileBehavior {
 
     val offersTapActionChoice: Boolean get() = details != null && tapAction == TileAction.TOGGLE
 
+    /** Whether the edit modal offers a [TileStyle] choice; the domain's [editSections] then shows it. */
+    val offersStyleChoice: Boolean get() = false
+
     /** The tap action for a tile with [preference]; the preference only matters when [offersTapActionChoice]. */
     fun resolveTap(preference: TileTapAction): TileAction {
         if (!offersTapActionChoice) return tapAction
@@ -65,7 +69,12 @@ interface DomainTileBehavior {
      * The edit modal's sections for a tile of this domain (passed as `EditTileModal`'s `domainSections`).
      * They edit modal-local state, so a change only reaches the working copy when the modal is applied.
      */
-    fun editSections(tapAction: TileTapAction, onTapActionChange: (TileTapAction) -> Unit): List<@Composable () -> Unit> =
+    fun editSections(
+        tapAction: TileTapAction,
+        onTapActionChange: (TileTapAction) -> Unit,
+        style: TileStyle,
+        onStyleChange: (TileStyle) -> Unit,
+    ): List<@Composable () -> Unit> =
         if (offersTapActionChoice) listOf { TapActionSection(tapAction, onTapActionChange) } else emptyList()
 }
 

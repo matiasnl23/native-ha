@@ -2,6 +2,7 @@ package com.matiasnl.hakiosk.ui.dashboard.tiles
 
 import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
+import com.matiasnl.hakiosk.data.ha.domain.ClimateCapabilities
 import com.matiasnl.hakiosk.data.ha.domain.HvacAction
 import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 
@@ -32,6 +33,7 @@ sealed interface TileSummary {
     /**
      * A climate entity: [hvacMode] (null while unavailable/unknown) and [hvacAction] pick the text and tint.
      * Either [targetTemperature] or the [targetTemperatureLow]..[targetTemperatureHigh] range is set, never both.
+     * The limits, step and [canTurnOn] drive the tile's quick-adjust buttons.
      */
     data class Climate(
         val hvacMode: HvacMode?,
@@ -40,5 +42,9 @@ sealed interface TileSummary {
         val targetTemperature: Double? = null,
         val targetTemperatureLow: Double? = null,
         val targetTemperatureHigh: Double? = null,
+        val minTemperature: Double = 7.0,
+        val maxTemperature: Double = 35.0,
+        val temperatureStep: Double = ClimateCapabilities.DEFAULT_TEMPERATURE_STEP,
+        val canTurnOn: Boolean = false,
     ) : TileSummary
 }

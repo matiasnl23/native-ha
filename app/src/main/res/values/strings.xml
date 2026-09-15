@@ -154,6 +154,11 @@
     <string name="climate_action_preheating">Precalentando</string>
     <string name="climate_state_unknown">Estado desconocido</string>
     <string name="climate_tile_target">objetivo %1$s</string>
+    <string name="climate_tile_turn_on">Encender</string>
+    <string name="climate_style_reading">Lectura</string>
+    <string name="climate_style_quick_adjust">Ajuste rápido</string>
+    <string name="climate_style_reading_hint">La temperatura actual en grande. Un toque abre los controles.</string>
+    <string name="climate_style_quick_adjust_hint">Botones − y + para cambiar la temperatura objetivo sin abrir los controles. El resto del botón abre los controles.</string>
     <string name="climate_panel_target">Temperatura objetivo</string>
     <string name="climate_panel_target_low">Mínima</string>
     <string name="climate_panel_target_high">Máxima</string>
@@ -201,6 +206,7 @@
     <string name="edit_tile_apply">Aplicar</string>
     <string name="edit_tile_link_title">Link a %1$s</string>
     <string name="edit_tile_tap_action">Al tocar</string>
+    <string name="edit_tile_style">Estilo</string>
     <string name="edit_tile_tap_action_toggle">Alternar</string>
     <string name="edit_tile_tap_action_open_details">Abrir controles</string>
     <string name="edit_tile_tap_action_toggle_hint">Un toque enciende o apaga. Mantené presionado el botón para abrir los controles.</string>

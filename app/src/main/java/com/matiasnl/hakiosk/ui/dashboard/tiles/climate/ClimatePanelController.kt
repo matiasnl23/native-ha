@@ -21,7 +21,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 /** How long the setpoint waits after the last +/− tap before it's sent, so repeated taps send one call. */
 const val SETPOINT_COMMIT_DELAY_MILLIS = 1_000L
@@ -312,13 +311,7 @@ class ClimatePanelController(
         /** Integrations round setpoints to their own precision; a tenth of the smallest usual step. */
         const val SETPOINT_TOLERANCE = 0.05f
 
-        fun roundTemperature(value: Double): Double = (value * 100).roundToLong() / 100.0
-
-        /** [value] snapped to the entity's step grid, moved [steps] steps and kept within its range. */
-        fun stepped(value: Double, steps: Int, capabilities: ClimateCapabilities): Double {
-            val step = capabilities.temperatureStep
-            val next = ((value / step).roundToLong() + steps) * step
-            return roundTemperature(next.coerceIn(capabilities.minTemperature, capabilities.maxTemperature))
-        }
+        fun stepped(value: Double, steps: Int, capabilities: ClimateCapabilities): Double =
+            steppedTemperature(value, steps, capabilities.temperatureStep, capabilities.minTemperature, capabilities.maxTemperature)
     }
 }

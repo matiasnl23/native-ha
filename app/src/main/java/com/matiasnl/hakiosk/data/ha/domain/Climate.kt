@@ -121,6 +121,9 @@ data class ClimateCapabilities(
 
     val temperatureStep: Double get() = targetTemperatureStep?.takeIf { it > 0.0 } ?: DEFAULT_TEMPERATURE_STEP
 
+    /** `climate.turn_on` is only registered for entities with TURN_ON (HA 2024.2+). */
+    val supportsTurnOn: Boolean get() = has(ClimateFeature.TURN_ON)
+
     companion object {
         /** HA's frontend default for Celsius installs when an integration sets no `target_temp_step`. */
         const val DEFAULT_TEMPERATURE_STEP = 0.5

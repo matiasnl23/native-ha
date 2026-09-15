@@ -24,6 +24,8 @@ import com.matiasnl.hakiosk.data.ha.fake.FakeHaRepository
 import com.matiasnl.hakiosk.ui.MainDispatcherRule
 import com.matiasnl.hakiosk.ui.dashboard.edit.LinkTargetOption
 import com.matiasnl.hakiosk.data.dashboard.TileStyle
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpoint
+import kotlinx.serialization.json.jsonPrimitive
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileDetailsRequest
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
@@ -114,6 +116,19 @@ private class CountingLayoutStore(initial: DashboardLayout) : DashboardLayoutSto
     }
 }
 
+/** Delegates to [FakeHaRepository] and records every service call as (service, entityId, data). */
+private class RecordingHaRepository(
+    entities: List<HaEntity>,
+    private val delegate: FakeHaRepository = FakeHaRepository(initialEntities = entities),
+) : HaRepository by delegate {
+    val calls = mutableListOf<Triple<String, String, JsonObject>>()
+
+    override suspend fun callService(domain: String, service: String, entityId: String, data: JsonObject): Result<Unit> {
+        calls += Triple(service, entityId, data)
+        return delegate.callService(domain, service, entityId, data)
+    }
+}
+
 class DashboardViewModelTest {
 
     @get:Rule
@@ -199,6 +214,49 @@ class DashboardViewModelTest {
         viewModel.onTileBrightnessChange(viewModel.uiState.value.entityTiles().single(), 40)
 
         assertEquals("off", repository.entities.value.getValue("switch.fan").state)
+    }
+
+    @Test
+    fun `a climate tile's quick setpoint is clamped to the entity's limits, and turn_on is sent when supported`() = runTest {
+        val repository = RecordingHaRepository(
+            listOf(
+                testEntity(
+                    "climate.living",
+                    "cool",
+                    """{"hvac_modes":["off","cool"],"min_temp":16,"max_temp":30,"temperature":22,"supported_features":257}""",
+                ),
+            ),
+        )
+        val viewModel = DashboardViewModel(repository, InMemoryDashboardLayoutStore(layoutWithTile("climate.living")))
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val tile = viewModel.uiState.value.entityTiles().single()
+
+        viewModel.onTileClimateSetpoint(tile, ClimateSetpoint.Single(40.0))
+        viewModel.onTileClimateTurnOn(tile)
+
+        assertEquals(listOf("set_temperature", "turn_on"), repository.calls.map { it.first })
+        assertEquals(30.0, repository.calls[0].third["temperature"]!!.jsonPrimitive.content.toDouble(), 0.0)
+    }
+
+    @Test
+    fun `climate quick actions skip other domains and devices without turn_on`() = runTest {
+        val repository = RecordingHaRepository(
+            listOf(
+                testEntity("climate.living", "off", """{"hvac_modes":["off","cool"],"supported_features":1}"""),
+                entity("light.kitchen", "off", "Kitchen"),
+            ),
+        )
+        val viewModel = DashboardViewModel(
+            repository,
+            InMemoryDashboardLayoutStore(layoutWithTiles("climate.living" to null, "light.kitchen" to null)),
+        )
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+        val (climate, light) = viewModel.uiState.value.entityTiles()
+
+        viewModel.onTileClimateTurnOn(climate)
+        viewModel.onTileClimateSetpoint(light, ClimateSetpoint.Single(22.0))
+
+        assertTrue(repository.calls.isEmpty())
     }
 
     @Test

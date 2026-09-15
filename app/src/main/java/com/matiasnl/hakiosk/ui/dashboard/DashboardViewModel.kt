@@ -17,7 +17,11 @@ import com.matiasnl.hakiosk.data.dashboard.resolveViewId
 import com.matiasnl.hakiosk.data.ha.HaConnectionState
 import com.matiasnl.hakiosk.data.ha.HaEntity
 import com.matiasnl.hakiosk.data.ha.HaRepository
+import com.matiasnl.hakiosk.data.ha.domain.ClimateCapabilities
+import com.matiasnl.hakiosk.data.ha.domain.ClimateCommands
 import com.matiasnl.hakiosk.data.ha.domain.LightCommands
+import com.matiasnl.hakiosk.data.ha.domain.ServiceCall
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpoint
 import com.matiasnl.hakiosk.data.ha.domain.call
 import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditController
 import com.matiasnl.hakiosk.ui.dashboard.edit.DashboardEditState
@@ -510,8 +514,36 @@ class DashboardViewModel(
      */
     fun onTileBrightnessChange(tile: DashboardTileUiState, percent: Int) {
         if (uiState.value.isEditing || tile.isMissing || tile.domain != "light") return
+        callOnTile(tile, LightCommands.setBrightnessPercent(percent))
+    }
+
+    /**
+     * A climate tile's quick-adjust buttons settled on [setpoint]. Clamped to the entity's current limits;
+     * no-op while editing, for a missing entity or for any other domain.
+     */
+    fun onTileClimateSetpoint(tile: DashboardTileUiState, setpoint: ClimateSetpoint) {
+        val capabilities = climateCapabilitiesOf(tile) ?: return
+        val call = when (setpoint) {
+            is ClimateSetpoint.Single -> ClimateCommands.setTemperature(setpoint.temperature, capabilities)
+            is ClimateSetpoint.Range -> ClimateCommands.setTemperatureRange(setpoint.low, setpoint.high, capabilities)
+        }
+        callOnTile(tile, call)
+    }
+
+    /** "Encender" on an off climate tile; only for entities that accept `climate.turn_on`. */
+    fun onTileClimateTurnOn(tile: DashboardTileUiState) {
+        val capabilities = climateCapabilitiesOf(tile) ?: return
+        if (capabilities.supportsTurnOn) callOnTile(tile, ClimateCommands.turnOn())
+    }
+
+    private fun climateCapabilitiesOf(tile: DashboardTileUiState): ClimateCapabilities? {
+        if (uiState.value.isEditing || tile.isMissing || tile.domain != "climate") return null
+        return haRepository.entities.value[tile.entityId]?.let(ClimateCapabilities::from)
+    }
+
+    private fun callOnTile(tile: DashboardTileUiState, call: ServiceCall) {
         viewModelScope.launch {
-            val result = haRepository.call(tile.entityId, LightCommands.setBrightnessPercent(percent))
+            val result = haRepository.call(tile.entityId, call)
             if (result.isFailure) {
                 val message = result.exceptionOrNull()?.message ?: tile.entityId
                 _errorEvents.tryEmit(DashboardActionError(tile.label, message))

@@ -83,6 +83,11 @@ import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummary
 import com.matiasnl.hakiosk.ui.dashboard.tiles.TileSummaryBackground
 import com.matiasnl.hakiosk.ui.dashboard.tiles.entityTileGestures
 import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateTileContent
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateQuickAdjustContent
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpoint
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.ClimateSetpointState
+import com.matiasnl.hakiosk.ui.dashboard.tiles.climate.rememberClimateSetpointState
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.ha.domain.HvacAction
 import com.matiasnl.hakiosk.data.ha.domain.HvacMode
 import com.matiasnl.hakiosk.ui.dashboard.tiles.light.rememberBrightnessSwipeState
@@ -150,6 +155,8 @@ fun DashboardScreen(
         onTileClick = viewModel::onTileClick,
         onTileLongPress = viewModel::onTileLongPress,
         onTileBrightnessChange = viewModel::onTileBrightnessChange,
+        onTileClimateSetpoint = viewModel::onTileClimateSetpoint,
+        onTileClimateTurnOn = viewModel::onTileClimateTurnOn,
         onPageSettled = viewModel::onPageSettled,
         onViewLinkClick = viewModel::onViewLinkClick,
         onSelectEditingView = viewModel::selectEditingView,
@@ -221,10 +228,11 @@ fun DashboardScreen(
         EditTileModalHost(
             uiState = uiState,
             tileId = tileId,
-            onApply = { label, colSpan, rowSpan, tapAction ->
+            onApply = { label, colSpan, rowSpan, tapAction, style ->
                 viewModel.setEditTileLabel(tileId, label)
                 viewModel.resizeEditTile(tileId, colSpan, rowSpan)
                 tapAction?.let { viewModel.setEditTileTapAction(tileId, it) }
+                style?.let { viewModel.setEditTileStyle(tileId, it) }
                 editingTileId = null
             },
             onRemove = {
@@ -274,8 +282,8 @@ private fun DashboardUiState.editablePreviewTiles(): List<PreviewTile> =
 private fun EditTileModalHost(
     uiState: DashboardUiState,
     tileId: String,
-    /** [tapAction] is null when the tile's domain offers no tap choice (nothing to write). */
-    onApply: (label: String?, colSpan: Int, rowSpan: Int, tapAction: TileTapAction?) -> Unit,
+    /** [tapAction] and [style] are null when the tile's domain offers no such choice (nothing to write). */
+    onApply: (label: String?, colSpan: Int, rowSpan: Int, tapAction: TileTapAction?, style: TileStyle?) -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -285,8 +293,10 @@ private fun EditTileModalHost(
     val entityTile = tile as? DashboardTileUiState
     // Modal-local like the label and size: it only reaches the working copy through Aplicar.
     var tapAction by rememberSaveable(tileId) { mutableStateOf(entityTile?.tapAction ?: TileTapAction.DEFAULT) }
-    val domainSections = entityTile
-        ?.let { DomainTileBehaviors.forDomain(it.domain).editSections(tapAction) { action -> tapAction = action } }
+    var style by rememberSaveable(tileId) { mutableStateOf(entityTile?.style ?: TileStyle.DEFAULT) }
+    val behavior = entityTile?.let { DomainTileBehaviors.forDomain(it.domain) }
+    val domainSections = behavior
+        ?.editSections(tapAction, { tapAction = it }, style, { style = it })
         .orEmpty()
     val previewTiles = uiState.editablePreviewTiles()
     val viewLinkFallback = stringResource(R.string.dashboard_view_link_fallback)
@@ -309,7 +319,13 @@ private fun EditTileModalHost(
         tiles = previewTiles,
         editingIndex = index,
         onApply = { label, colSpan, rowSpan ->
-            onApply(label, colSpan, rowSpan, tapAction.takeIf { domainSections.isNotEmpty() })
+            onApply(
+                label,
+                colSpan,
+                rowSpan,
+                tapAction.takeIf { behavior?.offersTapActionChoice == true },
+                style.takeIf { behavior?.offersStyleChoice == true },
+            )
         },
         onRemove = onRemove,
         onDismiss = onDismiss,
@@ -332,6 +348,8 @@ private fun DashboardContent(
     onTileClick: (DashboardTileUiState) -> Unit,
     onTileLongPress: (DashboardTileUiState) -> Unit,
     onTileBrightnessChange: (DashboardTileUiState, percent: Int) -> Unit,
+    onTileClimateSetpoint: (DashboardTileUiState, ClimateSetpoint) -> Unit,
+    onTileClimateTurnOn: (DashboardTileUiState) -> Unit,
     onPageSettled: (viewId: String) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onSelectEditingView: (viewId: String) -> Unit,
@@ -432,6 +450,8 @@ private fun DashboardContent(
                     onTileClick = onTileClick,
                     onTileLongPress = onTileLongPress,
                     onTileBrightnessChange = onTileBrightnessChange,
+                    onTileClimateSetpoint = onTileClimateSetpoint,
+                    onTileClimateTurnOn = onTileClimateTurnOn,
                     onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
                     onMoveTile = onMoveTile,
@@ -497,6 +517,8 @@ private fun DashboardPage(
     onTileClick: (DashboardTileUiState) -> Unit,
     onTileLongPress: (DashboardTileUiState) -> Unit,
     onTileBrightnessChange: (DashboardTileUiState, percent: Int) -> Unit,
+    onTileClimateSetpoint: (DashboardTileUiState, ClimateSetpoint) -> Unit,
+    onTileClimateTurnOn: (DashboardTileUiState) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
@@ -550,6 +572,8 @@ private fun DashboardPage(
                         onClick = { onTileClick(tile) },
                         onLongClick = { onTileLongPress(tile) },
                         onBrightnessChange = { percent -> onTileBrightnessChange(tile, percent) },
+                        onClimateSetpoint = { setpoint -> onTileClimateSetpoint(tile, setpoint) },
+                        onClimateTurnOn = { onTileClimateTurnOn(tile) },
                     )
                 }
                 is SpacerTileUiState -> Box(Modifier) // Nothing outside edit mode.
@@ -721,6 +745,8 @@ private fun DashboardTileCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onBrightnessChange: (percent: Int) -> Unit,
+    onClimateSetpoint: (ClimateSetpoint) -> Unit,
+    onClimateTurnOn: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dimmed = tile.isMissing || tile.isUnavailable
@@ -738,6 +764,8 @@ private fun DashboardTileCard(
     } else {
         tile.summary
     }
+    val quickClimate = (tile.summary as? TileSummary.Climate)?.takeIf { tile.style == TileStyle.QUICK_ADJUST && !dimmed }
+    val climateSetpoint = quickClimate?.let { rememberClimateSetpointState(it, onClimateSetpoint) }
     Card(
         modifier = modifier
             .fillMaxSize()
@@ -753,7 +781,7 @@ private fun DashboardTileCard(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (!dimmed) TileSummaryBackground(summary, Modifier.matchParentSize())
-            DashboardTileContent(tile, summary, placement)
+            DashboardTileContent(tile, summary, placement, climateSetpoint, onClimateTurnOn.takeIf { quickClimate != null })
         }
     }
 }
@@ -768,10 +796,32 @@ private fun entityTileColors(tile: DashboardTileUiState, summary: TileSummary, d
     )
 }
 
+/**
+ * [climateSetpoint] and [onClimateTurnOn] drive a quick-adjust climate tile's buttons; null in edit mode,
+ * where that style still shows but its buttons are disabled.
+ */
 @Composable
-private fun DashboardTileContent(tile: DashboardTileUiState, summary: TileSummary, placement: GridPlacement) {
+private fun DashboardTileContent(
+    tile: DashboardTileUiState,
+    summary: TileSummary,
+    placement: GridPlacement,
+    climateSetpoint: ClimateSetpointState? = null,
+    onClimateTurnOn: (() -> Unit)? = null,
+) {
     if (summary is TileSummary.Climate && summary.hvacMode != null && !tile.isMissing && !tile.isUnavailable) {
-        ClimateTileContent(label = tile.label, summary = summary, wide = placement.colSpan >= 2, labelStyle = labelStyle(placement))
+        val wide = placement.colSpan >= 2
+        if (tile.style == TileStyle.QUICK_ADJUST) {
+            ClimateQuickAdjustContent(
+                label = tile.label,
+                summary = summary,
+                wide = wide,
+                labelStyle = labelStyle(placement),
+                setpoint = climateSetpoint,
+                onTurnOn = onClimateTurnOn,
+            )
+        } else {
+            ClimateTileContent(label = tile.label, summary = summary, wide = wide, labelStyle = labelStyle(placement))
+        }
         return
     }
     val stateText = when {
@@ -1094,6 +1144,8 @@ private fun DashboardPreview() {
             onTileClick = {},
             onTileLongPress = {},
             onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1149,6 +1201,8 @@ private fun DashboardSmartTilesPreview() {
             onTileClick = {},
             onTileLongPress = {},
             onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1199,6 +1253,8 @@ private fun DashboardMultiViewPreview() {
             onTileClick = {},
             onTileLongPress = {},
             onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1232,6 +1288,8 @@ private fun DashboardEmptyPreview() {
             onTileClick = {},
             onTileLongPress = {},
             onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},
@@ -1277,6 +1335,8 @@ private fun DashboardEditModePreview() {
             onTileClick = {},
             onTileLongPress = {},
             onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
             onPageSettled = {},
             onViewLinkClick = {},
             onOpenSettings = {},

@@ -1,5 +1,6 @@
 package com.matiasnl.hakiosk.ui.dashboard.tiles
 
+import com.matiasnl.hakiosk.data.dashboard.TileStyle
 import com.matiasnl.hakiosk.data.dashboard.TileTapAction
 import androidx.compose.ui.graphics.Color
 import com.matiasnl.hakiosk.data.ha.domain.AlarmPanelState
@@ -129,10 +130,16 @@ class DomainTileBehaviorsTest {
     }
 
     @Test
-    fun `only domains with a tap choice contribute an edit-modal section`() {
-        assertEquals(1, DomainTileBehaviors.forDomain("light").editSections(TileTapAction.DEFAULT) {}.size)
+    fun `only domains with a tap or style choice contribute an edit-modal section`() {
+        fun sectionsOf(domain: String) =
+            DomainTileBehaviors.forDomain(domain).editSections(TileTapAction.DEFAULT, {}, TileStyle.DEFAULT, {})
+
+        assertEquals(1, sectionsOf("light").size)
+        assertEquals(1, sectionsOf("climate").size)
+        assertTrue(DomainTileBehaviors.forDomain("climate").offersStyleChoice)
+        assertFalse(DomainTileBehaviors.forDomain("light").offersStyleChoice)
         listOf("alarm_control_panel", "switch", "scene", "camera", "sensor").forEach { domain ->
-            assertTrue(domain, DomainTileBehaviors.forDomain(domain).editSections(TileTapAction.DEFAULT) {}.isEmpty())
+            assertTrue(domain, sectionsOf(domain).isEmpty())
         }
     }
 
