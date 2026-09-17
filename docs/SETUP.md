@@ -226,8 +226,15 @@ Con el primer APK publicado:
 ```
 
 El SHA-256 del certificado tiene que ser **el mismo en todas las versiones**: es la huella que la app
-compara antes de instalar una actualización. Anotalo; el certificado es público, no hay problema en
-compartirlo.
+compara antes de instalar una actualización. El certificado es público, así que queda anotado acá —
+es el de la clave de release usada desde `v1.0.1`, la primera release firmada:
+
+```
+efe68825b61435595c8f84ec6d9ca7ac08a0eb6f610e87cd6aa1f27d07546fb8
+```
+
+Si alguna build futura da un SHA-256 distinto, se firmó con otra clave: ninguna tablet va a aceptar
+esa actualización y habría que desinstalar para instalarla.
 
 ## 9. Datos de la app en cada dispositivo
 
