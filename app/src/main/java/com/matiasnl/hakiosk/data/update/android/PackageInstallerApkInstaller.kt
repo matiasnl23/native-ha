@@ -8,9 +8,11 @@ import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import com.matiasnl.hakiosk.data.update.ApkInstaller
+import com.matiasnl.hakiosk.data.update.PendingInstallConfirmation
 import com.matiasnl.hakiosk.data.update.InstallFailureReason
 import com.matiasnl.hakiosk.data.update.InstallStatuses
 import com.matiasnl.hakiosk.data.update.UpdateError
@@ -20,10 +22,9 @@ import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -47,11 +48,14 @@ class PackageInstallerApkInstaller(
 ) : ApkInstaller {
     private val appContext = context.applicationContext
 
-    private val _userConfirmations = MutableSharedFlow<Intent>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val userConfirmations: Flow<Intent> = _userConfirmations.asSharedFlow()
+    private val _pendingConfirmation = MutableStateFlow<PendingInstallConfirmation?>(null)
+    override val pendingConfirmation: StateFlow<PendingInstallConfirmation?> = _pendingConfirmation.asStateFlow()
+
+    override fun confirmationLaunched(confirmation: PendingInstallConfirmation) {
+        // Only clears this exact confirmation: a late call from a previous session must not swallow the
+        // dialog of the current one.
+        _pendingConfirmation.compareAndSet(confirmation, null)
+    }
 
     override suspend fun install(apk: File): Result<Unit> = withContext(ioDispatcher) {
         val installer = appContext.packageManager.packageInstaller
@@ -100,11 +104,14 @@ class PackageInstallerApkInstaller(
             abandon(installer, sessionId)
             throw e
         } finally {
+            // The session is over one way or another: a dialog still on offer would now be stale.
+            _pendingConfirmation.value = null
             runCatching { appContext.unregisterReceiver(receiver) }
         }
     }
 
-    private fun onStatus(intent: Intent, outcome: CompletableDeferred<Result<Unit>>) {
+    @VisibleForTesting
+    internal fun onStatus(intent: Intent, outcome: CompletableDeferred<Result<Unit>>) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()
         when (status) {
@@ -114,8 +121,10 @@ class PackageInstallerApkInstaller(
                     outcome.complete(failure(InstallFailureReason.UNKNOWN, "The system asked for a confirmation it didn't provide"))
                 } else {
                     log("Update install waiting for the confirmation dialog")
-                    // Keeps waiting: the real outcome arrives on a second broadcast once the user answers.
-                    _userConfirmations.tryEmit(confirmation)
+                    // Published as state, not emitted as an event: with no collector at this instant an
+                    // event would be dropped and the session would hang until it timed out. Keeps
+                    // waiting either way — the real outcome arrives on a second broadcast.
+                    _pendingConfirmation.value = PendingInstallConfirmation(confirmation)
                 }
             }
 

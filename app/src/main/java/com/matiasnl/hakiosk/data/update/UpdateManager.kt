@@ -9,7 +9,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,10 +64,16 @@ class UpdateManager(
     val status: StateFlow<UpdateStatus> = _status.asStateFlow()
 
     /**
-     * System confirmation dialogs to launch from a **visible Activity** (stage 3). Launching them from
-     * here would hit Android 10's background activity start restrictions and be dropped silently.
+     * The system confirmation dialog waiting to be launched, or null. Held as state so it survives
+     * until somebody can show it: see [ApkInstaller.pendingConfirmation], which also explains why this
+     * has to be collected from `MainActivity` and launched from a **visible Activity**.
      */
-    val userConfirmations: Flow<Intent> get() = installer.userConfirmations
+    val pendingConfirmation: StateFlow<PendingInstallConfirmation?> get() = installer.pendingConfirmation
+
+    /** Call after launching [PendingInstallConfirmation.intent] so the dialog isn't offered twice. */
+    fun confirmationLaunched(confirmation: PendingInstallConfirmation) {
+        installer.confirmationLaunched(confirmation)
+    }
 
     /** Only one of check / download / install runs at a time. */
     private val mutex = Mutex()

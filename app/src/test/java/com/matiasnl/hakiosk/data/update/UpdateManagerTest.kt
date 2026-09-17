@@ -3,8 +3,8 @@ package com.matiasnl.hakiosk.data.update
 import android.content.Intent
 import java.io.File
 import kotlin.random.Random
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -270,6 +271,15 @@ class UpdateManagerTest {
         assertNull(manager.status.value.progressPercent)
     }
 
+    @Test
+    fun `the pending confirmation is the installer's own state, not a replayed event`() = runTest {
+        val manager = manager()
+
+        // Same instance: whoever collects it later still finds a dialog raised before they arrived.
+        assertSame(installer.pending, manager.pendingConfirmation)
+        assertNull(manager.pendingConfirmation.value)
+    }
+
     // ---- scheduling ----
 
     @Test
@@ -433,9 +443,15 @@ class UpdateManagerTest {
     }
 
     private class FakeInstaller : ApkInstaller {
-        override val userConfirmations: Flow<Intent> = emptyFlow()
+        val pending = MutableStateFlow<PendingInstallConfirmation?>(null)
+        override val pendingConfirmation: StateFlow<PendingInstallConfirmation?> = pending
+        val launched = mutableListOf<PendingInstallConfirmation>()
         var failure: UpdateError? = null
         val installed = mutableListOf<File>()
+
+        override fun confirmationLaunched(confirmation: PendingInstallConfirmation) {
+            launched += confirmation
+        }
 
         override suspend fun install(apk: File): Result<Unit> {
             installed += apk

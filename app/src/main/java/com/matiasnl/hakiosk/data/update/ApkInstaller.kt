@@ -3,17 +3,36 @@ package com.matiasnl.hakiosk.data.update
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import java.io.File
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * A system confirmation dialog the installer is blocked on, waiting for someone to launch it.
+ *
+ * Identity matters: [ApkInstaller.confirmationLaunched] clears only the confirmation it is handed, so a
+ * dialog raised by a newer session is never dropped by a late call from an older one.
+ */
+class PendingInstallConfirmation(val intent: Intent)
 
 /** Hands a verified APK to the system package installer. */
 interface ApkInstaller {
     /**
-     * Confirmation dialogs the caller must launch, from a **visible Activity**. They are never launched
-     * from here: this code can run from a service, and Android 10+ blocks activity starts from the
-     * background, so the intent would be silently dropped. The settings screen (stage 3) collects this
-     * and calls `startActivity`.
+     * The confirmation dialog waiting to be launched, or null when there is none.
+     *
+     * **State, not an event, on purpose.** The system raises it whenever it feels like it, and if
+     * nobody happens to be listening at that instant the install stalls until it times out, with the
+     * session open and a download wasted. Holding it as state means whoever comes along next still
+     * finds it. It is cleared when [confirmationLaunched] is called and when the session ends.
+     *
+     * **Must be collected from `MainActivity`, not only from the updates screen.** The two paths that
+     * matter both happen with something else on screen: Home Assistant asking the tablet to install
+     * while it shows the dashboard, and the user tapping "install" and navigating away before the
+     * system answers. It also has to be launched from a **visible Activity** — Android 10+ drops
+     * activity starts from the background.
      */
-    val userConfirmations: Flow<Intent>
+    val pendingConfirmation: StateFlow<PendingInstallConfirmation?>
+
+    /** Called once [PendingInstallConfirmation.intent] has been launched, so it is not shown twice. */
+    fun confirmationLaunched(confirmation: PendingInstallConfirmation)
 
     /**
      * Copies [apk] into an installer session and commits it, then waits for the outcome. Fails with an
