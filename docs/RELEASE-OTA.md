@@ -96,6 +96,9 @@ Sin cambios visibles en la app.
   `apksigner verify --print-certs`, generación del `release-metadata.json` y publicación con `gh release
   create --verify-tag --generate-notes` (`gh` viene preinstalado en el runner; una dependencia de
   terceros menos en el job que descifra la keystore).
+- El job declara **`environment: PRODUCTION`**: la keystore y sus contraseñas viven en ese environment
+  y GitHub solo se los pasa a un job que lo referencie. Sin esa línea el build corre igual y falla al
+  firmar con secrets vacíos. Ver [`SETUP.md`](SETUP.md#qué-implica-que-vivan-en-un-environment-y-no-en-el-repo).
 - Higiene de la clave: secrets por `env:` del step y nunca interpolados en el `run:`, keystore
   decodificada a `$RUNNER_TEMP` y borrada con `if: always()`, `base64 -w0` (el masking de secrets
   funciona por coincidencia exacta), sin `ACTIONS_STEP_DEBUG`, actions pineadas por SHA, y nunca

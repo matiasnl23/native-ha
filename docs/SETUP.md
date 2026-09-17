@@ -173,7 +173,8 @@ la misma.
 
 ### Cargar los secrets en GitHub
 
-En el repo: **Settings → Secrets and variables → Actions → New repository secret**. Son cuatro:
+En el repo, dentro del environment **`PRODUCTION`**: **Settings → Environments → `PRODUCTION` → Add
+environment secret**. Son cuatro:
 
 | Secret | Contenido |
 |---|---|
@@ -194,6 +195,27 @@ como valor.
 Dos cosas que ya están de nuestro lado: los secrets **no se exponen a workflows disparados desde
 forks**, y el workflow de release corre solo por tag `v*` o a mano, así que nadie externo puede
 provocar que se descifre la keystore.
+
+### Qué implica que vivan en un environment y no en el repo
+
+Guardarlos en un environment agrega tres reglas que hay que tener presentes (documentación de GitHub,
+*Deployments and environments*):
+
+1. **El job tiene que declarar el environment.** "Secrets stored in an environment are only available
+   to workflow jobs that reference the environment": el job de release lleva
+   `environment: PRODUCTION`. Sin esa línea el workflow igual corre, pero los cuatro secrets llegan
+   **vacíos** y la firma falla con un error que no menciona los secrets — es el error más difícil de
+   diagnosticar de todo este setup.
+2. **Si el environment pide revisores, el job espera.** Con *required reviewers* configurados, el job
+   queda en estado *Waiting* y "a job cannot access environment secrets until one of the required
+   reviewers approves it". Para un proyecto de una sola persona conviene dejarlo sin revisores; si no,
+   cada tag va a quedar esperando una aprobación manual.
+3. **Si restringís los refs, la regla del tag va aparte.** En *Deployment branches and tags*, la opción
+   "Selected branches and tags" se evalúa contra el `GITHUB_REF` de la corrida, y los patrones "must be
+   configured for branches or tags individually": una regla de **branch** no habilita un **tag**. Como
+   el release se dispara pusheando `v1.4.2`, hace falta una regla de tipo **Tag** con patrón `v*`, o el
+   job no arranca. Los comodines no cruzan `/`. Si dejaste el environment sin restricciones, no hay
+   nada que configurar.
 
 ### Verificar que quedó bien
 
