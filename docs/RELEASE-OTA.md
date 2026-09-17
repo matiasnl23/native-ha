@@ -93,7 +93,8 @@ v2+v3 con una clave descartable, y `versionCode`/`versionName` tomados de las pr
   actuales como default.
 - Workflow `.github/workflows/release.yml`: `actions/checkout` + `actions/setup-java` +
   `gradle/actions/setup-gradle` (la doc de Gradle desaconseja explícitamente `setup-java` con
-  `cache: gradle`, y `gradle-build-action` está archivado), `assembleRelease testReleaseUnitTest`,
+  `cache: gradle`, y `gradle-build-action` está archivado), `assembleRelease testDebugUnitTest`
+  (AGP solo crea tareas de unit test para el `testBuildType`, que es debug),
   `apksigner verify --print-certs`, generación del `release-metadata.json` y publicación con `gh release
   create --verify-tag --generate-notes` (`gh` viene preinstalado en el runner; una dependencia de
   terceros menos en el job que descifra la keystore).

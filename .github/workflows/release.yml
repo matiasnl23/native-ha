@@ -89,7 +89,9 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           set -euo pipefail
-          ./gradlew assembleRelease testReleaseUnitTest --console=plain \
+          # testDebugUnitTest, not testReleaseUnitTest: AGP only creates unit test tasks for the
+          # testBuildType (debug), and these tests are plain JVM logic, variant-independent.
+          ./gradlew assembleRelease testDebugUnitTest --console=plain \
             -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
 
       - name: Verify the signature
