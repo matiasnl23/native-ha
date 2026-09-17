@@ -32,25 +32,12 @@ control remoto, indicar qué permisos faltan con botones que abran cada ajuste.
 **A verificar en la tablet:** comportamiento de `lockNow()` con y sin PIN, y los permisos para abrir la
 app desde segundo plano (varían según versión de Android y fabricante).
 
-## 2. Actualización remota de la app (sin Play Store)
+## 2. Actualización remota de la app (sin Play Store) — ya planificada
 
-| Forma | ¿Hay que tocar la tablet? | Requisitos |
-|---|---|---|
-| La app se actualiza sola, **sin Device Owner** | **Sí**: Android muestra "¿Instalar actualización?" y alguien toca *Instalar*. | Permiso "Instalar apps desconocidas" (se concede una vez desde Ajustes). |
-| La app se actualiza sola, **con Device Owner** | **No**: instalación silenciosa. | Device Owner provisionado. |
-| Android 12+ sin Device Owner (la app es su propio instalador) | No. | Android 12+: **la tablet con Android 10 no puede**. |
-| `adb install -r` por Wi-Fi desde una PC | No. | Depuración inalámbrica; en Android 10 se habilita por USB y se pierde al reiniciar. Solo para desarrollo. |
-
-**Integración propuesta:**
-1. **Build de release firmada** con clave privada fuera del repo (Android solo acepta actualizaciones
-   con la misma firma). Pasar de la build de debug a la de release implica reinstalar **una vez**.
-2. **Publicar el APK** en GitHub Releases (el repo es público) o en la carpeta `www` de Home Assistant.
-3. **Botón "Buscar actualización" en HA** (entidad MQTT): la app consulta un archivo de versión,
-   descarga el APK, verifica su hash y lanza la instalación.
-4. **Seguridad:** la URL de actualización se configura en la app, nunca llega por MQTT; Android además
-   rechaza APKs con otra firma.
-
-Conviene hacerlo junto con la build de release y Device Owner (sección 3), para reinstalar una sola vez.
+Dejó de ser una idea: el plan por etapas (build firmada en GitHub Actions, distribución por GitHub
+Releases, chequeo automático configurable y entidad `update` en Home Assistant) está en
+[`RELEASE-OTA.md`](RELEASE-OTA.md), con los detalles de Android verificados contra la documentación
+oficial y AOSP.
 
 ## 3. Device Owner (opcional)
 

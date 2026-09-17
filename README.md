@@ -31,9 +31,12 @@ entidades exponer), proyectos `kiosk-satellite` y `FreeKiosk` (patrones de Devic
      vistas y botones inteligentes (luces, alarma). Ver [`docs/UI-REWORK.md`](docs/UI-REWORK.md).
 3. **MVP3** — Cliente MQTT + Discovery para control remoto desde HA. Ver
    [`docs/MVP3-MQTT.md`](docs/MVP3-MQTT.md).
+4. **Producción** — Build de release firmada en GitHub Actions, distribución por GitHub Releases y
+   actualizaciones automáticas configurables (más disparo manual desde HA). Ver
+   [`docs/RELEASE-OTA.md`](docs/RELEASE-OTA.md).
 
-Ideas evaluadas para más adelante (apagado real de pantalla, actualización remota de la app, Device
-Owner y otras mejoras): [`docs/FUTURE-FEATURES.md`](docs/FUTURE-FEATURES.md).
+Ideas evaluadas para más adelante (apagado real de pantalla, Device Owner y otras mejoras):
+[`docs/FUTURE-FEATURES.md`](docs/FUTURE-FEATURES.md).
 
 ## Entorno de desarrollo
 
