@@ -48,7 +48,7 @@ class PackageManagerApkSignatureVerifier(context: Context) : ApkSignatureVerifie
         val installed = installedInfo() ?: fail(UpdateError.UnexpectedApk("This app is not installed"))
         val apkCertificates = ApkSigningCertificates.fingerprints(signingCertificates(archive))
         val installedCertificates = ApkSigningCertificates.fingerprints(signingCertificates(installed))
-        if (!ApkSigningCertificates.matches(apkCertificates, installedCertificates)) {
+        if (!ApkSigningCertificates.matches(apkCertificates, installedCertificates, hasMultipleSigners(archive))) {
             // Deliberately opaque: the fingerprints themselves are of no use to the user and a mismatch
             // means the same thing either way — this APK is not ours.
             fail(UpdateError.SignatureMismatch)
@@ -85,6 +85,16 @@ class PackageManagerApkSignatureVerifier(context: Context) : ApkSignatureVerifie
             // field that actually got filled in.
         }
         return info.signatures?.filterNotNull()?.map { it.toByteArray() }.orEmpty()
+    }
+
+    /** Several signers means every one of them has to be accounted for; see [ApkSigningCertificates.matches]. */
+    @Suppress("DEPRECATION")
+    private fun hasMultipleSigners(info: PackageInfo): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = info.signingInfo
+            if (signingInfo != null) return signingInfo.hasMultipleSigners()
+        }
+        return (info.signatures?.filterNotNull()?.size ?: 0) > 1
     }
 
     private fun fail(error: UpdateError): Nothing = throw UpdateFailureException(error)

@@ -41,6 +41,23 @@ class ApkSigningCertificatesTest {
     }
 
     @Test
+    fun `with several signers every one of them must already be installed`() {
+        val installed = fingerprintsOf("key one", "key two")
+
+        assertTrue(ApkSigningCertificates.matches(fingerprintsOf("key one", "key two"), installed, true))
+    }
+
+    @Test
+    fun `with several signers a partial overlap is not enough`() {
+        // Laxer than Android itself: it would let an APK signed by the release key plus an attacker's
+        // key install over the app. Single-signer rotation still matches on one shared certificate.
+        val installed = fingerprintsOf("release key")
+
+        assertFalse(ApkSigningCertificates.matches(fingerprintsOf("release key", "attacker key"), installed, true))
+        assertTrue(ApkSigningCertificates.matches(fingerprintsOf("release key", "attacker key"), installed, false))
+    }
+
+    @Test
     fun `no certificates on either side fails closed`() {
         val certificates = fingerprintsOf("release key")
 

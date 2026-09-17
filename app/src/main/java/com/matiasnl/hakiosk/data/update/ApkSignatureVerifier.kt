@@ -27,13 +27,24 @@ object ApkSigningCertificates {
         certificates.filter { it.isNotEmpty() }.map { sha256Hex(it) }.toSet()
 
     /**
-     * True when the two sides share at least one signing certificate. An empty set on either side is
-     * never a match: a missing certificate list must fail closed, never wave the APK through. Comparing
-     * sets (rather than a single certificate) is what keeps a future key rotation installable, the same
-     * way Android itself accepts an update signed by a rotated lineage.
+     * Whether the APK may be installed over the running app.
+     *
+     * An empty set on either side is never a match: a missing certificate list must fail closed, never
+     * wave the APK through.
+     *
+     * With a single signer, sharing one certificate is enough, which is what keeps a future key
+     * rotation installable — the same way Android accepts an update signed by a rotated lineage.
+     * With [apkHasMultipleSigners], **every** signer of the APK must already be among the installed
+     * ones: Android requires the whole set to match there, and accepting one shared certificate would
+     * make this check laxer than the platform's.
      */
-    fun matches(apkCertificates: Set<String>, installedCertificates: Set<String>): Boolean =
-        apkCertificates.isNotEmpty() &&
-            installedCertificates.isNotEmpty() &&
-            apkCertificates.any { it in installedCertificates }
+    fun matches(
+        apkCertificates: Set<String>,
+        installedCertificates: Set<String>,
+        apkHasMultipleSigners: Boolean = false,
+    ): Boolean = when {
+        apkCertificates.isEmpty() || installedCertificates.isEmpty() -> false
+        apkHasMultipleSigners -> installedCertificates.containsAll(apkCertificates)
+        else -> apkCertificates.any { it in installedCertificates }
+    }
 }
