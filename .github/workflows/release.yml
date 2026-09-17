@@ -23,6 +23,10 @@ jobs:
     environment: PRODUCTION
     permissions:
       contents: write # create the release and upload its assets
+    env:
+      # One APK per ABI plus the universal fallback. Must match the `splits` block in
+      # app/build.gradle.kts; a missing one fails the run instead of publishing a partial release.
+      ABIS: "armeabi-v7a arm64-v8a x86 x86_64 universal"
     steps:
       # Runs before the checkout so a malformed tag fails in seconds.
       - name: Resolve the version from the tag
@@ -91,23 +95,36 @@ jobs:
           set -euo pipefail
           # testDebugUnitTest, not testReleaseUnitTest: AGP only creates unit test tasks for the
           # testBuildType (debug), and these tests are plain JVM logic, variant-independent.
-          ./gradlew assembleRelease testDebugUnitTest --console=plain \
+          # -PabiSplits: one APK per ABI, so a tablet downloads ~19 MB instead of ~60 MB per update.
+          ./gradlew assembleRelease testDebugUnitTest --console=plain -PabiSplits \
             -PversionName="$VERSION_NAME" -PversionCode="$VERSION_CODE"
 
       - name: Verify the signature
         run: |
           set -euo pipefail
-          apk=app/build/outputs/apk/release/app-release.apk
-          # Without a key Gradle emits app-release-unsigned.apk instead of failing: catch that here
-          # rather than publishing something the tablets would refuse to install.
-          if [[ ! -f "$apk" ]]; then
-            echo "::error::No signed APK at $apk — the signing key never reached Gradle."
-            ls -1 app/build/outputs/apk/release/
+          out=app/build/outputs/apk/release
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          fingerprints=""
+          for abi in $ABIS; do
+            apk="$out/app-$abi-release.apk"
+            # Without a key Gradle emits *-unsigned.apk instead of failing: catch that here rather
+            # than publishing something the tablets would refuse to install.
+            if [[ ! -f "$apk" ]]; then
+              echo "::error::No signed APK for $abi at $apk — the signing key never reached Gradle."
+              ls -1 "$out"
+              exit 1
+            fi
+            echo "--- $abi"
+            "$apksigner" verify --verbose --print-certs "$apk"
+            fingerprints+="$("$apksigner" verify --print-certs "$apk" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')"$'\n'
+          done
+          # The certificate is public; its SHA-256 must stay identical across every APK and every
+          # release, or the tablets reject the update. See docs/SETUP.md.
+          if [[ "$(printf '%s' "$fingerprints" | sort -u | wc -l)" -ne 1 ]]; then
+            echo "::error::The APKs are not all signed with the same certificate:"
+            printf '%s' "$fingerprints"
             exit 1
           fi
-          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
-          # The certificate is public; its SHA-256 must stay identical across every release.
-          "$apksigner" verify --verbose --print-certs "$apk"
 
       - name: Prepare the assets
         env:
@@ -117,18 +134,28 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          apk="dist/hakiosk-$VERSION_NAME.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$apk"
-          # What the tablets read to decide whether to update, and to verify what they downloaded.
+          apks='{}'
+          for abi in $ABIS; do
+            name="hakiosk-$VERSION_NAME-$abi.apk"
+            cp "app/build/outputs/apk/release/app-$abi-release.apk" "dist/$name"
+            # Every ABI keeps the release's single versionCode: no per-ABI offsets.
+            apks="$(jq -n \
+              --argjson acc "$apks" \
+              --arg abi "$abi" \
+              --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$name" \
+              --arg sha256 "$(sha256sum "dist/$name" | cut -d' ' -f1)" \
+              --argjson sizeBytes "$(stat -c%s "dist/$name")" \
+              '$acc + {($abi): {url: $url, sha256: $sha256, sizeBytes: $sizeBytes}}')"
+          done
+          # What the tablets read to decide whether to update, which APK to pull, and to verify what
+          # they downloaded. Contract described in docs/RELEASE-OTA.md.
           jq -n \
             --argjson versionCode "$VERSION_CODE" \
             --arg versionName "$VERSION_NAME" \
-            --arg apkUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/hakiosk-$VERSION_NAME.apk" \
-            --arg sha256 "$(sha256sum "$apk" | cut -d' ' -f1)" \
-            --argjson sizeBytes "$(stat -c%s "$apk")" \
             --argjson minSdk 26 \
             --arg commit "$GITHUB_SHA" \
             --arg releaseUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --argjson apks "$apks" \
             '$ARGS.named' > dist/release-metadata.json
           cat dist/release-metadata.json
 
