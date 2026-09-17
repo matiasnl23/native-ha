@@ -35,7 +35,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Flow: create a session in `MODE_FULL_INSTALL`, stream the APK into it, `fsync`, close, `commit` with
  * an [android.content.IntentSender] pointing at a private broadcast. The system answers on that
  * broadcast: `STATUS_PENDING_USER_ACTION` carries the confirmation dialog to launch (published on
- * [userConfirmations], never launched from here), and a later broadcast carries the real outcome.
+ * [pendingConfirmation], never launched from here), and a later broadcast carries the real outcome.
  *
  * Sideloaded without Device Owner, the dialog always appears; with Device Owner the system skips the
  * permission check and never emits `STATUS_PENDING_USER_ACTION` at all, so the same code installs
