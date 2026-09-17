@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
                     mqttRemoteControl = container.mqttRemoteControl,
                     remoteControlBridge = container.remoteControlBridge,
                     displayPreferencesStore = container.displayPreferencesStore,
+                    configBackupRepository = container.configBackupRepository,
+                    configBackupFiles = container.configBackupFiles,
                 )
             }
         }

@@ -26,6 +26,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.matiasnl.hakiosk.camera.CameraModule
+import com.matiasnl.hakiosk.data.config.ConfigBackupFiles
+import com.matiasnl.hakiosk.data.config.ConfigBackupRepository
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
 import com.matiasnl.hakiosk.data.device.MqttConfigStore
@@ -39,6 +41,8 @@ import com.matiasnl.hakiosk.ui.camera.CameraTileThumbnail
 import com.matiasnl.hakiosk.ui.dashboard.tiles.LocalCameraStreamCatalog
 import androidx.compose.runtime.CompositionLocalProvider
 import com.matiasnl.hakiosk.ui.camera.CameraViewModel
+import com.matiasnl.hakiosk.ui.config.ConfigBackupScreen
+import com.matiasnl.hakiosk.ui.config.ConfigBackupViewModel
 import com.matiasnl.hakiosk.ui.dashboard.DashboardScreen
 import com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel
 import com.matiasnl.hakiosk.ui.remote.BrokerSettingsScreen
@@ -87,6 +91,8 @@ fun HaKioskNavGraph(
     mqttRemoteControl: MqttRemoteControl,
     remoteControlBridge: RemoteControlBridge,
     displayPreferencesStore: DisplayPreferencesStore,
+    configBackupRepository: ConfigBackupRepository,
+    configBackupFiles: ConfigBackupFiles,
 ) {
     val startDestination by produceState(initialValue = StartDestination.Loading, haConfigStore) {
         value = if (haConfigStore.config.first() == null) StartDestination.Setup else StartDestination.Dashboard
@@ -228,6 +234,17 @@ fun HaKioskNavGraph(
                             },
                             onBack = { navController.popBackStack() },
                             onOpenRemoteControl = { navController.navigate(RemoteControlRoute) },
+                            onOpenConfigBackup = { navController.navigate(ConfigBackupRoute) },
+                        )
+                    }
+                    composable<ConfigBackupRoute> { backStackEntry ->
+                        val viewModel: ConfigBackupViewModel = viewModel(
+                            viewModelStoreOwner = backStackEntry,
+                            factory = ConfigBackupViewModel.factory(configBackupRepository, configBackupFiles),
+                        )
+                        ConfigBackupScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() },
                         )
                     }
                     composable<RemoteControlRoute> { backStackEntry ->

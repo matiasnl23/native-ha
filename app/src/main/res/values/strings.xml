@@ -59,6 +59,35 @@
     <string name="remote_broker_status_disconnected">Desconectado: %1$s</string>
     <string name="remote_broker_notification_permission_denied">No se activaron las notificaciones. El control remoto puede seguir funcionando, pero sin aviso persistente.</string>
 
+    <!-- Config backup (export/import) -->
+    <string name="config_backup_title">Copia de la configuración</string>
+    <string name="config_backup_back">Volver</string>
+    <string name="config_backup_intro">Guardá la configuración de esta tablet en un archivo para restaurarla después de reinstalar la app, o para copiarla a otra tablet.</string>
+    <string name="config_backup_includes_title">Qué se guarda</string>
+    <string name="config_backup_includes">El dashboard completo (vistas, botones, grillas y opciones de cámara), la URL de Home Assistant, las preferencias de pantalla y los datos del broker MQTT.</string>
+    <string name="config_backup_excludes_title">Qué no se guarda</string>
+    <string name="config_backup_excludes">El token de Home Assistant y la contraseña del broker: están cifrados con una clave de esta tablet que no se puede exportar. Después de importar hay que volver a cargarlos a mano.</string>
+    <string name="config_backup_export">Exportar configuración</string>
+    <string name="config_backup_import">Importar configuración</string>
+    <string name="config_backup_working">Un momento…</string>
+    <string name="config_backup_export_done">Configuración exportada.</string>
+    <string name="config_backup_export_failed">No se pudo escribir el archivo.</string>
+    <string name="config_backup_cancel">Cancelar</string>
+    <string name="config_backup_import_confirm_title">¿Importar esta configuración?</string>
+    <string name="config_backup_import_confirm_message">Se reemplaza el dashboard actual y el resto de la configuración de esta tablet. No se puede deshacer.</string>
+    <string name="config_backup_import_confirm_summary">El archivo tiene %1$d vistas y %2$d botones.</string>
+    <string name="config_backup_import_confirm_broker">Incluye la configuración del broker MQTT, sin la contraseña.</string>
+    <string name="config_backup_import_confirm_no_broker">No incluye configuración del broker MQTT.</string>
+    <string name="config_backup_import_confirm_origin">Exportado por la versión %1$s.</string>
+    <string name="config_backup_import_confirm_action">Importar</string>
+    <string name="config_backup_import_done">Configuración importada. Volvé a cargar el token de Home Assistant y, si usás el control remoto, la contraseña del broker.</string>
+    <string name="config_backup_import_failed_unreadable">No se pudo leer el archivo. No se cambió nada.</string>
+    <string name="config_backup_import_failed_too_large">El archivo es demasiado grande para ser una copia de configuración. No se cambió nada.</string>
+    <string name="config_backup_import_failed_not_a_backup">Este archivo no es una copia de configuración de HA Kiosk. No se cambió nada.</string>
+    <string name="config_backup_import_failed_future">La copia es de una versión más nueva de la app (formato %1$d). Actualizá HA Kiosk para importarla. No se cambió nada.</string>
+    <string name="config_backup_import_failed_corrupt">El archivo está dañado o incompleto. No se cambió nada.</string>
+    <string name="config_backup_import_failed_write">No se pudo guardar toda la configuración importada. Revisá el dashboard antes de seguir.</string>
+
     <!-- Screen-off overlay -->
     <string name="remote_screen_overlay_description">Pantalla en reposo. Tocá para encender.</string>
 

@@ -46,6 +46,7 @@ fun SetupScreen(
     onDisconnected: () -> Unit,
     onBack: () -> Unit,
     onOpenRemoteControl: () -> Unit = {},
+    onOpenConfigBackup: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -60,6 +61,7 @@ fun SetupScreen(
         onDisconnect = { viewModel.disconnect(onDisconnected) },
         onBack = onBack,
         onOpenRemoteControl = onOpenRemoteControl,
+        onOpenConfigBackup = onOpenConfigBackup,
     )
 }
 
@@ -76,6 +78,7 @@ private fun SetupContent(
     onDisconnect: () -> Unit,
     onBack: () -> Unit,
     onOpenRemoteControl: () -> Unit = {},
+    onOpenConfigBackup: () -> Unit = {},
 ) {
     var showDisconnectConfirm by remember { mutableStateOf(false) }
 
@@ -176,6 +179,9 @@ private fun SetupContent(
             Text(stringResource(R.string.setup_remote_control_section), style = MaterialTheme.typography.titleSmall)
             OutlinedButton(onClick = onOpenRemoteControl, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.remote_broker_title))
+            }
+            OutlinedButton(onClick = onOpenConfigBackup, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.config_backup_title))
             }
         }
     }

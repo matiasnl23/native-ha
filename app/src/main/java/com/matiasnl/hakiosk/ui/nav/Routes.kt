@@ -20,3 +20,7 @@ data class CameraRoute(val entityId: String, val label: String? = null, val stre
 /** MQTT broker settings for remote control from Home Assistant. */
 @Serializable
 object RemoteControlRoute
+
+/** Export/import of the whole configuration to a file. */
+@Serializable
+object ConfigBackupRoute
