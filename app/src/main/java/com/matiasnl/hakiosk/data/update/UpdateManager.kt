@@ -103,13 +103,13 @@ class UpdateManager(
 
     /** Fire-and-forget check for the UI's "check now" button and for Home Assistant. */
     fun requestCheck() {
-        scope.launch { checkNow() }
+        scope.launch { quietly("check") { checkNow() } }
     }
 
     /** Fire-and-forget download + verify + install. Ignored while another step is running. */
     fun requestInstall() {
         if (_status.value.inProgress) return
-        scope.launch { downloadAndInstall() }
+        scope.launch { quietly("install") { downloadAndInstall() } }
     }
 
     /**
@@ -119,13 +119,17 @@ class UpdateManager(
      */
     suspend fun checkNow(): Result<ReleaseMetadata?> = mutex.withLock {
         setPhase(UpdatePhase.Checking)
-        val fetched = metadataSource.fetch()
-        // NonCancellable: the timestamp of an attempt that did happen must not be lost to a cancellation.
-        withContext(NonCancellable) { preferencesStore.setLastCheckEpochMillis(clock()) }
-        fetched.fold(
-            onSuccess = { metadata -> evaluate(metadata) },
-            onFailure = { error -> fail(error.toUpdateError()) },
-        )
+        try {
+            metadataSource.fetch().fold(
+                onSuccess = { metadata -> evaluate(metadata) },
+                onFailure = { error -> fail(error.toUpdateError()) },
+            )
+        } finally {
+            // In a finally, and NonCancellable: an attempt that happened must be recorded even when the
+            // fetch threw or was cancelled. Otherwise the schedule sees the old timestamp, computes "due
+            // now" again and retries immediately, turning one broken check into a tight loop.
+            withContext(NonCancellable) { preferencesStore.setLastCheckEpochMillis(clock()) }
+        }
     }
 
     private fun evaluate(metadata: ReleaseMetadata): Result<ReleaseMetadata?> = when {
@@ -230,13 +234,24 @@ class UpdateManager(
         return remaining + random.nextLong(intervalMillis / JITTER_FRACTION + 1)
     }
 
-    private suspend fun checkQuietly() {
+    private suspend fun checkQuietly() = quietly("check") { checkNow() }
+
+    /**
+     * Runs a step without ever letting a failure escape to the coroutine's uncaught handler.
+     *
+     * The steps below return typed failures, but they can also *throw*: `ApkDownloader` and
+     * `PackageInstallerApkInstaller` rethrow anything that isn't an [UpdateFailureException] or an
+     * `IOException`, so a `RuntimeException` from Binder in `createSession`, or an
+     * [IllegalStateException] from okio, would reach the default handler. On a tablet that runs 24/7
+     * that means the app dies and the wall display sits on the launcher until somebody walks over to it.
+     */
+    private suspend fun quietly(what: String, block: suspend () -> Unit) {
         try {
-            checkNow()
+            block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            log("Update check failed: ${e.javaClass.simpleName}")
+            log("Update $what failed: ${e.javaClass.simpleName}")
             setPhase(UpdatePhase.Failed(e.toUpdateError()))
         }
     }

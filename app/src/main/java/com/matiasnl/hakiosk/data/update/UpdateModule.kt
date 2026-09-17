@@ -9,6 +9,7 @@ import com.matiasnl.hakiosk.data.update.android.AndroidInstalledAppInfo
 import com.matiasnl.hakiosk.data.update.android.PackageInstallerApkInstaller
 import com.matiasnl.hakiosk.data.update.android.PackageManagerApkSignatureVerifier
 import java.io.File
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,10 +47,16 @@ class UpdateModule(context: Context, okHttpClient: OkHttpClient) {
             installPermission = AndroidInstallPermission(appContext),
             preferencesStore = preferencesStore,
             installedApp = AndroidInstalledAppInfo(appContext),
-            // Process-wide: the schedule outlives every activity, like the MQTT connection.
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            // Process-wide: the schedule outlives every activity, like the MQTT connection. The
+            // exception handler is the last line of defence for a 24/7 kiosk: nothing an update does
+            // should ever be able to take the app down (UpdateManager already catches its own steps).
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + updateExceptionHandler()),
             log = { Log.i(TAG, it) },
         )
+    }
+
+    private fun updateExceptionHandler() = CoroutineExceptionHandler { _, error ->
+        Log.e(TAG, "Update work failed unexpectedly", error)
     }
 
     init {

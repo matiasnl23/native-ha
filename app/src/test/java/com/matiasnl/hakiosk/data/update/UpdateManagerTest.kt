@@ -280,6 +280,54 @@ class UpdateManagerTest {
         assertNull(manager.pendingConfirmation.value)
     }
 
+    // ---- crash safety ----
+
+    @Test
+    fun `a check that throws is reported, not left to crash the process`() = runTest {
+        // runTest fails the test if anything escapes to the scope's uncaught handler, which is exactly
+        // the kiosk-killing path this guards.
+        metadataSource.crash = IllegalStateException("okio blew up")
+        val manager = manager()
+
+        manager.requestCheck()
+        runCurrent()
+
+        assertTrue(manager.status.value.error is UpdateError.Network)
+    }
+
+    @Test
+    fun `an install that throws is reported, not left to crash the process`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        val manager = manager()
+        manager.checkNow()
+        downloader.crash = IllegalStateException("Binder died in createSession")
+
+        manager.requestInstall()
+        runCurrent()
+
+        assertTrue(manager.status.value.error is UpdateError.Network)
+        assertTrue(installer.installed.isEmpty())
+    }
+
+    @Test
+    fun `a scheduled check that throws leaves the schedule running`() = runTest {
+        metadataSource.crash = IllegalStateException("okio blew up")
+        preferences.setCheckIntervalHours(1)
+        val manager = manager()
+
+        manager.start()
+        runCurrent()
+        assertEquals(1, metadataSource.calls)
+
+        // The loop survived the throw and keeps checking.
+        metadataSource.crash = null
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        advanceTimeBy(HOUR + 1)
+
+        assertTrue(metadataSource.calls > 1)
+        assertTrue(manager.status.value.updateAvailable)
+    }
+
     // ---- scheduling ----
 
     @Test
@@ -404,10 +452,14 @@ class UpdateManagerTest {
 
     private class FakeMetadataSource : ReleaseMetadataSource {
         var result: Result<ReleaseMetadata> = Result.failure(UpdateFailureException(UpdateError.Network("unset")))
+
+        /** Thrown, not returned: the real client can blow up instead of failing politely. */
+        var crash: Throwable? = null
         var calls = 0
 
         override suspend fun fetch(): Result<ReleaseMetadata> {
             calls++
+            crash?.let { throw it }
             return result
         }
     }
@@ -415,6 +467,9 @@ class UpdateManagerTest {
     private class FakeDownloader : ApkDownloadSource {
         lateinit var file: File
         var failure: UpdateError? = null
+
+        /** Thrown, not returned: okio and Binder can throw straight through the downloader. */
+        var crash: Throwable? = null
         var observer: (() -> Unit)? = null
         val requested = mutableListOf<ApkAsset>()
         var cleared = 0
@@ -423,6 +478,7 @@ class UpdateManagerTest {
             requested += asset
             onProgress(asset.sizeBytes / 2, asset.sizeBytes)
             observer?.invoke()
+            crash?.let { throw it }
             failure?.let { return Result.failure(UpdateFailureException(it)) }
             return Result.success(file)
         }
