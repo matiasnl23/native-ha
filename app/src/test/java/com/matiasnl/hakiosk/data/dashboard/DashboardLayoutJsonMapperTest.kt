@@ -265,6 +265,28 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `encode always writes the format version, and still omits every other default`() {
+        val layout = DashboardLayout(
+            views = listOf(
+                DashboardView(
+                    id = "v1",
+                    name = "Principal",
+                    tiles = listOf(DashboardTile("t1", TileContent.Entity("light.kitchen"))),
+                ),
+            ),
+        )
+
+        val json = DashboardLayoutJsonMapper.encode(layout)
+
+        // Without this, a future version couldn't tell an old file from one it wrote itself.
+        assertTrue(json.contains("\"version\":1"))
+        // Only the version is forced: the tile's default spans and tap action stay out of the file.
+        assertFalse(json.contains("colSpan"))
+        assertFalse(json.contains("tapAction"))
+        assertEquals(layout, DashboardLayoutJsonMapper.decode(json, null).layout)
+    }
+
+    @Test
     fun `decode reports whether the stored layout could actually be read`() {
         val stored = DashboardLayoutJsonMapper.encode(DashboardLayout(listOf(DashboardView("v1", "Principal"))))
 

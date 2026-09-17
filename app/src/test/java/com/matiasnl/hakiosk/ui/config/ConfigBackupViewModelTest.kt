@@ -244,7 +244,8 @@ class ConfigBackupViewModelTest {
 
     @Test
     fun `a file from a newer version is refused`() = runTest {
-        val newer = fileContent().replace("\"version\": 1,", "\"version\": 7,")
+        // replaceFirst: only the backup envelope's version, not the nested dashboard's own.
+        val newer = fileContent().replaceFirst("\"version\": 1,", "\"version\": 7,")
 
         val viewModel = importing(newer)
 

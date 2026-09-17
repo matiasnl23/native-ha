@@ -100,7 +100,9 @@ class ConfigBackupJsonMapperTest {
 
     @Test
     fun `a backup from a future version is refused instead of guessed at`() {
-        val fromTheFuture = ConfigBackupJsonMapper.encode(backup).replace("\"version\": 1,", "\"version\": 2,")
+        // replaceFirst: the nested dashboard envelope carries a version of its own, and only the
+        // backup envelope's (written first) is the one this test is about.
+        val fromTheFuture = ConfigBackupJsonMapper.encode(backup).replaceFirst("\"version\": 1,", "\"version\": 2,")
 
         assertEquals(ConfigBackupDecodeResult.FutureVersion(2), ConfigBackupJsonMapper.decode(fromTheFuture))
     }

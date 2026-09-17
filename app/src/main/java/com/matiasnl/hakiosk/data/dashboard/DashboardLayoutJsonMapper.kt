@@ -1,5 +1,7 @@
 package com.matiasnl.hakiosk.data.dashboard
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -9,10 +11,15 @@ import kotlinx.serialization.json.Json
 private data class LegacyDashboardTile(val entityId: String, val label: String? = null)
 
 /** Persisted JSON envelope for [DashboardLayout]. [version] lets a future app version recognize and
- * migrate a format it no longer writes by default; there's only one format so far. */
+ * migrate a format it no longer writes by default; there's only one format so far.
+ *
+ * [EncodeDefault] on [version] because this encoder omits defaults (so an untouched tap action or
+ * span costs no bytes). Without it the version — always its default — was never actually written,
+ * leaving every stored layout unlabelled and the version check with nothing to read. */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 private data class PersistedDashboardLayout(
-    val version: Int = CURRENT_VERSION,
+    @EncodeDefault val version: Int = CURRENT_VERSION,
     val views: List<DashboardView>,
 )
 
