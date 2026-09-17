@@ -41,7 +41,18 @@ interface HaRepository {
 interface HaConfigStore {
     val config: Flow<HaServerConfig?>
 
+    /**
+     * The stored base URL on its own, which exists even when [config] is null because no token is
+     * stored yet (or it can't be decrypted). A config import restores the URL without the token —
+     * the token is encrypted with a device-bound Keystore key and can't be exported — so the setup
+     * screen prefills this and only the token has to be pasted again.
+     */
+    val baseUrl: Flow<String?>
+
     suspend fun save(config: HaServerConfig)
+
+    /** Stores [baseUrl] alone, leaving any stored token untouched. */
+    suspend fun saveBaseUrl(baseUrl: String)
 
     suspend fun clear()
 }

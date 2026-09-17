@@ -64,12 +64,23 @@ class InMemoryHaConfigStore(initial: HaServerConfig? = null) : HaConfigStore {
     private val _config = MutableStateFlow(initial)
     override val config: StateFlow<HaServerConfig?> = _config.asStateFlow()
 
+    private val _baseUrl = MutableStateFlow(initial?.baseUrl)
+    override val baseUrl: StateFlow<String?> = _baseUrl.asStateFlow()
+
     override suspend fun save(config: HaServerConfig) {
         _config.value = config
+        _baseUrl.value = config.baseUrl
+    }
+
+    /** Mirrors the real store: only the URL changes, so an already stored token stays usable. */
+    override suspend fun saveBaseUrl(baseUrl: String) {
+        _baseUrl.value = baseUrl
+        _config.update { it?.copy(baseUrl = baseUrl) }
     }
 
     override suspend fun clear() {
         _config.value = null
+        _baseUrl.value = null
     }
 }
 

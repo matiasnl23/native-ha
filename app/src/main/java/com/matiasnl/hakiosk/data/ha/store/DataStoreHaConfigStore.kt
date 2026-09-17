@@ -34,11 +34,24 @@ class DataStoreHaConfigStore(
         .distinctUntilChanged()
         .flowOn(ioDispatcher)
 
+    override val baseUrl: Flow<String?> = dataStore.data
+        .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
+        .map { prefs -> prefs[KEY_BASE_URL] }
+        .distinctUntilChanged()
+        .flowOn(ioDispatcher)
+
     override suspend fun save(config: HaServerConfig) {
         val encryptedToken = withContext(ioDispatcher) { cipher.encrypt(config.token.trim()) }
         dataStore.edit { prefs ->
             prefs[KEY_BASE_URL] = HaUrls.normalizeBaseUrl(config.baseUrl)
             prefs[KEY_TOKEN] = encryptedToken
+        }
+    }
+
+    /** Only [KEY_BASE_URL] is written: an already stored token keeps working with the new URL. */
+    override suspend fun saveBaseUrl(baseUrl: String) {
+        dataStore.edit { prefs ->
+            prefs[KEY_BASE_URL] = HaUrls.normalizeBaseUrl(baseUrl)
         }
     }
 

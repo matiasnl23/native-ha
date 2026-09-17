@@ -61,7 +61,8 @@ class SetupViewModel(
 
     init {
         viewModelScope.launch {
-            haConfigStore.config.first()?.let { config ->
+            val config = haConfigStore.config.first()
+            if (config != null) {
                 _uiState.update {
                     if (fieldsTouched) {
                         // Keep whatever the user already typed, but we now know a config exists
@@ -71,7 +72,13 @@ class SetupViewModel(
                         it.copy(baseUrl = config.baseUrl, token = config.token, isEditingExisting = true)
                     }
                 }
+                return@launch
             }
+            // No usable config, yet a base URL may still be stored on its own: a config import
+            // restores it without the token, which can't be exported. Prefilling it leaves only the
+            // token to paste. Not an "existing" config: there is nothing to disconnect from yet.
+            val storedBaseUrl = haConfigStore.baseUrl.first() ?: return@launch
+            _uiState.update { if (fieldsTouched) it else it.copy(baseUrl = storedBaseUrl) }
         }
     }
 

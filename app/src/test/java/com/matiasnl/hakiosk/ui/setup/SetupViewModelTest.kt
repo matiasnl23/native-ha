@@ -36,7 +36,13 @@ private class GatedHaConfigStore(private val stored: HaServerConfig?) : HaConfig
         emit(stored)
     }
 
+    override val baseUrl: Flow<String?> = flow {
+        gate.await()
+        emit(stored?.baseUrl)
+    }
+
     override suspend fun save(config: HaServerConfig) {}
+    override suspend fun saveBaseUrl(baseUrl: String) {}
     override suspend fun clear() {}
 
     fun release() {
@@ -176,6 +182,21 @@ class SetupViewModelTest {
 
         assertTrue(disconnected)
         assertNull(configStore.config.value)
+    }
+
+    @Test
+    fun `a base url restored by a config import is prefilled even without a token`() = runTest {
+        val configStore = InMemoryHaConfigStore()
+        configStore.saveBaseUrl("https://imported.local:8123")
+
+        val viewModel = SetupViewModel(ScriptedHaRepository(), configStore)
+
+        val state = viewModel.uiState.value
+        assertEquals("https://imported.local:8123", state.baseUrl)
+        assertEquals("", state.token)
+        // There is no usable config until the token is pasted, so nothing to disconnect from yet.
+        assertFalse(state.isEditingExisting)
+        assertFalse(state.canSave)
     }
 
     @Test

@@ -66,6 +66,35 @@ class DataStoreHaConfigStoreTest {
     }
 
     @Test
+    fun saveBaseUrlNormalizesAndKeepsTheStoredToken() = runTest {
+        store.save(HaServerConfig("http://ha.local:8123", "secret-token"))
+
+        store.saveBaseUrl("  https://ha.example.com:8443/ ")
+
+        assertEquals(HaServerConfig("https://ha.example.com:8443", "secret-token"), store.config.first())
+        assertEquals("https://ha.example.com:8443", store.baseUrl.first())
+    }
+
+    @Test
+    fun baseUrlIsReadableWithoutAToken() = runTest {
+        store.saveBaseUrl("http://imported.local:8123")
+
+        // What a config import leaves behind: not a usable config yet, but the setup screen can
+        // prefill the URL so only the token has to be pasted.
+        assertNull(store.config.first())
+        assertEquals("http://imported.local:8123", store.baseUrl.first())
+    }
+
+    @Test
+    fun clearAlsoRemovesTheBaseUrl() = runTest {
+        store.saveBaseUrl("http://ha.local:8123")
+
+        store.clear()
+
+        assertNull(store.baseUrl.first())
+    }
+
+    @Test
     fun clearRemovesConfig() = runTest {
         store.save(HaServerConfig("http://ha.local:8123", "t"))
         store.clear()
