@@ -244,13 +244,18 @@ class UpdateManager(
 
     /**
      * Time left until the next check: the remainder of the interval since the last one (0 when it is
-     * already due, which is what makes a startup check happen), plus up to 10 % of jitter. Clamped to
-     * the interval so a clock that jumped forward can't park the next check in the far future.
+     * already due, which is what makes a startup check happen), plus jitter. Clamped to the interval so
+     * a clock that jumped forward can't park the next check in the far future.
+     *
+     * The jitter spreads tablets that share an interval, but it must not postpone a check that is
+     * already due: at the 24 h default, a tenth of the interval turned "a check at startup" into one up
+     * to 2.4 h after the tablet came back. A due check gets minutes of spread instead.
      */
     private suspend fun waitUntilNextCheck(intervalMillis: Long): Long {
         val lastCheck = preferencesStore.preferences.first().lastCheckEpochMillis ?: 0L
         val remaining = (lastCheck + intervalMillis - clock()).coerceIn(0, intervalMillis)
-        return remaining + random.nextLong(intervalMillis / JITTER_FRACTION + 1)
+        val jitterBound = if (remaining == 0L) STARTUP_JITTER_MILLIS else intervalMillis / JITTER_FRACTION
+        return remaining + random.nextLong(jitterBound + 1)
     }
 
     /** Returns false when the check was skipped because another step held the lock. */
@@ -305,5 +310,8 @@ class UpdateManager(
 
         /** Up to a tenth of the interval, so tablets on the same interval drift apart. */
         const val JITTER_FRACTION = 10
+
+        /** All the spread a check that is already due may be delayed by, e.g. right after a reboot. */
+        const val STARTUP_JITTER_MILLIS = 2L * 60 * 1000
     }
 }

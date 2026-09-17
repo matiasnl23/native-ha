@@ -39,7 +39,7 @@ class UpdateManagerTest {
         downloader.file = tempFolder.newFile("update.apk").apply { writeText("apk") }
     }
 
-    private fun TestScope.manager() = UpdateManager(
+    private fun TestScope.manager(random: Random = NO_JITTER) = UpdateManager(
         metadataSource = metadataSource,
         downloader = downloader,
         signatureVerifier = verifier,
@@ -49,7 +49,7 @@ class UpdateManagerTest {
         installedApp = installedApp,
         scope = backgroundScope,
         clock = { EPOCH + testScheduler.currentTime },
-        random = NO_JITTER,
+        random = random,
     )
 
     // ---- checking ----
@@ -469,6 +469,37 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun `a check that is due is spread over minutes, never hours`() = runTest {
+        // Worst-case jitter: the tablet just rebooted with the 24 h default, so the check is due and
+        // must not be pushed back by a tenth of the interval (2.4 h).
+        val random = RecordingRandom(value = Long.MAX_VALUE)
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        preferences.setCheckIntervalHours(24)
+        val manager = manager(random = random)
+
+        manager.start()
+        advanceTimeBy(5 * MINUTE)
+
+        assertEquals(1, metadataSource.calls)
+        // 2 minutes of spread (the bound is exclusive, hence the + 1).
+        assertEquals(2 * MINUTE + 1, random.bounds.first())
+    }
+
+    @Test
+    fun `a check that is not due yet keeps the full jitter spread`() = runTest {
+        val random = RecordingRandom()
+        preferences.setCheckIntervalHours(24)
+        preferences.setLastCheckEpochMillis(EPOCH)
+        val manager = manager(random = random)
+
+        manager.start()
+        runCurrent()
+
+        assertEquals(0, metadataSource.calls)
+        assertEquals(24 * HOUR / 10 + 1, random.bounds.first())
+    }
+
+    @Test
     fun `turning checks off stops the schedule`() = runTest {
         metadataSource.result = Result.success(metadata(versionCode = 10002))
         preferences.setCheckIntervalHours(1)
@@ -602,9 +633,22 @@ class UpdateManagerTest {
         override fun settingsIntent(): Intent = error("The settings intent is never launched from a test")
     }
 
+    /** Records the bound each jitter draw was asked for, which is what the schedule's shape depends on. */
+    private class RecordingRandom(private val value: Long = 0) : Random() {
+        val bounds = mutableListOf<Long>()
+
+        override fun nextBits(bitCount: Int): Int = 0
+
+        override fun nextLong(until: Long): Long {
+            bounds += until
+            return value.coerceAtMost(until - 1).coerceAtLeast(0)
+        }
+    }
+
     private companion object {
         const val EPOCH = 1_700_000_000_000L
         const val HOUR = 60L * 60 * 1000
+        const val MINUTE = 60L * 1000
 
         /** Deterministic schedule: jitter is real in production, noise in a test. */
         val NO_JITTER = object : Random() {
