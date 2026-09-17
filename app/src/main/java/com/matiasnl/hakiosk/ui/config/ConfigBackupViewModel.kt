@@ -46,7 +46,11 @@ sealed interface ConfigBackupStatus {
 
     /** Reading or writing. Both actions stay disabled meanwhile. */
     data object Working : ConfigBackupStatus
-    data object ExportDone : ConfigBackupStatus
+    /**
+     * Carries what actually went into the file, so the message can say it. If an export ever does
+     * save an empty dashboard, "0 vistas" is on screen instead of a reassuring "listo".
+     */
+    data class ExportDone(val summary: ConfigBackupSummary) : ConfigBackupStatus
     data class ExportFailed(val failure: ConfigExportFailure) : ConfigBackupStatus
     data object ImportDone : ConfigBackupStatus
     data class ImportFailed(val failure: ConfigImportFailure) : ConfigBackupStatus
@@ -96,7 +100,7 @@ class ConfigBackupViewModel(
                 is GatheredConfigBackup.Available -> {
                     val written = files.write(uri, ConfigBackupJsonMapper.encode(gathered.backup))
                     if (written) {
-                        ConfigBackupStatus.ExportDone
+                        ConfigBackupStatus.ExportDone(gathered.backup.summary())
                     } else {
                         ConfigBackupStatus.ExportFailed(ConfigExportFailure.NotWritten)
                     }

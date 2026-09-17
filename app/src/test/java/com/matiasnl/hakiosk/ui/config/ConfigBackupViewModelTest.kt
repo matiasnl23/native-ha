@@ -121,7 +121,11 @@ class ConfigBackupViewModelTest {
 
         viewModel.export("content://new-file")
 
-        assertEquals(ConfigBackupStatus.ExportDone, viewModel.uiState.value.status)
+        val status = viewModel.uiState.value.status
+        check(status is ConfigBackupStatus.ExportDone) { "expected ExportDone but was $status" }
+        // What the success message shows: the counts that actually reached the file.
+        assertEquals(1, status.summary.viewCount)
+        assertEquals(1, status.summary.tileCount)
         assertEquals("content://new-file", files.writtenUri)
         val written = requireNotNull(files.written)
         val gathered = repository.read()

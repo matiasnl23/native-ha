@@ -70,7 +70,7 @@
     <string name="config_backup_export">Exportar configuración</string>
     <string name="config_backup_import">Importar configuración</string>
     <string name="config_backup_working">Un momento…</string>
-    <string name="config_backup_export_done">Configuración exportada.</string>
+    <string name="config_backup_export_done">Configuración exportada: %1$d vistas y %2$d botones.</string>
     <string name="config_backup_export_failed">No se pudo escribir el archivo.</string>
     <string name="config_backup_export_failed_layout">No se pudo leer el dashboard guardado, así que no se exportó nada. El dashboard que ves ahora está vacío por ese motivo: no lo edites, porque guardar encima reemplaza lo que hay en disco.</string>
     <string name="config_backup_cancel">Cancelar</string>

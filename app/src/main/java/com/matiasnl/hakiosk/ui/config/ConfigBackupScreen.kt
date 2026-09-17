@@ -128,7 +128,11 @@ private fun StatusText(status: ConfigBackupStatus) {
     val text = when (status) {
         ConfigBackupStatus.Idle -> return
         ConfigBackupStatus.Working -> stringResource(R.string.config_backup_working)
-        ConfigBackupStatus.ExportDone -> stringResource(R.string.config_backup_export_done)
+        is ConfigBackupStatus.ExportDone -> stringResource(
+            R.string.config_backup_export_done,
+            status.summary.viewCount,
+            status.summary.tileCount,
+        )
         is ConfigBackupStatus.ExportFailed -> when (status.failure) {
             ConfigExportFailure.NotWritten -> stringResource(R.string.config_backup_export_failed)
             ConfigExportFailure.UnreadableLayout -> stringResource(R.string.config_backup_export_failed_layout)
