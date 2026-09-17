@@ -100,8 +100,9 @@ Sin cambios visibles en la app.
   decodificada a `$RUNNER_TEMP` y borrada con `if: always()`, `base64 -w0` (el masking de secrets
   funciona por coincidencia exacta), sin `ACTIONS_STEP_DEBUG`, actions pineadas por SHA, y nunca
   `pull_request_target` en este repo.
-- Generación de la keystore y carga de secrets documentadas en `SETUP.md`, con la advertencia de
-  backup: **si se pierde esa clave, ninguna tablet puede volver a actualizarse sin desinstalar**.
+- Generación de la keystore y carga de secrets: ver
+  [`SETUP.md`](SETUP.md#8-firma-de-release-y-secrets-de-github-actions). **Si se pierde esa clave,
+  ninguna tablet puede volver a actualizarse sin desinstalar.**
 - Agente: coordinador (toca build y CI, fuera del alcance de los agentes de feature).
 
 ### Etapa 2 — Cliente de actualización en la app

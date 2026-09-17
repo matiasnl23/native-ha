@@ -135,7 +135,79 @@ Sin esto, cada máquina firma con su propio `~/.android/debug.keystore` y la ins
   instalarle la build de release y desactivar la depuración USB (cambiar de firma implica reinstalar
   una vez).
 
-## 8. Datos de la app en cada dispositivo
+## 8. Firma de release y secrets de GitHub Actions
+
+Las builds de release —las que se instalan en las tablets de kiosko y después se actualizan solas— se
+firman con una clave **propia que nunca se sube al repo**. Android solo acepta una actualización si
+está firmada con la misma clave que la versión ya instalada, así que **si esa clave se pierde, la
+única salida es desinstalar la app en cada tablet y perder su configuración**. Es lo más delicado del
+proyecto: tratala mejor que a cualquier contraseña.
+
+Esto es el prerrequisito de la etapa 1 de [`RELEASE-OTA.md`](RELEASE-OTA.md), que agrega el
+`signingConfig` de release y el workflow que consume estos secrets.
+
+### Generar la keystore (una sola vez en la vida del proyecto)
+
+`keytool` viene con el JDK; si no lo tenés en el `PATH`, usá el de Android Studio (el mismo
+`JAVA_HOME` de la sección 6):
+
+```bash
+"$JAVA_HOME/bin/keytool" -genkeypair -v \
+  -keystore ~/hakiosk-release.keystore \
+  -storetype PKCS12 \
+  -alias hakiosk \
+  -keyalg RSA -keysize 2048 \
+  -validity 10000
+```
+
+Pide una contraseña y datos de identidad (nombre, organización, país). No los valida nadie, pero
+quedan dentro del certificado que ve Android. Con PKCS12 la contraseña del store y la de la clave son
+la misma.
+
+- Guardala **fuera del repo** (el ejemplo la deja en `~/`). `.gitignore` ya ignora `*.keystore` y
+  `*.jks` con la excepción de `debug.keystore`, pero no dependas de eso: que el archivo nunca esté
+  adentro del árbol de trabajo.
+- **Backup en al menos dos lugares que no sean esta máquina** (gestor de contraseñas, disco externo
+  cifrado). Guardá los tres datos juntos: archivo, contraseña y alias. Sin los tres no sirve de nada.
+- `-validity 10000` son unos 27 años: la clave tiene que sobrevivir a todas las versiones futuras.
+
+### Cargar los secrets en GitHub
+
+En el repo: **Settings → Secrets and variables → Actions → New repository secret**. Son cuatro:
+
+| Secret | Contenido |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | La keystore codificada en base64, **en una sola línea** |
+| `RELEASE_KEYSTORE_PASSWORD` | La contraseña del store |
+| `RELEASE_KEY_ALIAS` | `hakiosk` (el `-alias` de arriba) |
+| `RELEASE_KEY_PASSWORD` | La contraseña de la clave (con PKCS12, la misma del store) |
+
+```bash
+base64 -w0 ~/hakiosk-release.keystore    # en macOS: base64 -i ~/hakiosk-release.keystore
+```
+
+El `-w0` importa: sin él `base64` corta la salida en líneas de 76 caracteres, y el enmascarado de
+secrets en los logs de Actions funciona por coincidencia exacta — un secret multilínea puede terminar
+apareciendo en claro. Copiá la línea entera (son unos 4 KB; el límite de un secret es 48 KB) y pegala
+como valor.
+
+Dos cosas que ya están de nuestro lado: los secrets **no se exponen a workflows disparados desde
+forks**, y el workflow de release corre solo por tag `v*` o a mano, así que nadie externo puede
+provocar que se descifre la keystore.
+
+### Verificar que quedó bien
+
+Con el primer APK publicado:
+
+```bash
+"$ANDROID_HOME"/build-tools/<versión>/apksigner verify --print-certs app-release.apk
+```
+
+El SHA-256 del certificado tiene que ser **el mismo en todas las versiones**: es la huella que la app
+compara antes de instalar una actualización. Anotalo; el certificado es público, no hay problema en
+compartirlo.
+
+## 9. Datos de la app en cada dispositivo
 
 La URL de Home Assistant, el token y el layout del dashboard se guardan **en cada dispositivo**
 (el token cifrado con una clave del Android Keystore, que no se puede exportar). Un emulador nuevo en
