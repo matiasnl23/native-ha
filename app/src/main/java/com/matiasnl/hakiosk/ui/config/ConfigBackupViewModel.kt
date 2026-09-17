@@ -98,7 +98,10 @@ class ConfigBackupViewModel(
             // stored layout couldn't be decoded: neither placeholder can reach the file.
             val status = when (val gathered = runCatching { repository.read() }.getOrNull()) {
                 is GatheredConfigBackup.Available -> {
-                    val written = files.write(uri, ConfigBackupJsonMapper.encode(gathered.backup))
+                    // encode() stays inside a guarded block: an exception escaping the launch would
+                    // crash the app instead of reporting an export that didn't happen.
+                    val content = runCatching { ConfigBackupJsonMapper.encode(gathered.backup) }.getOrNull()
+                    val written = content != null && files.write(uri, content)
                     if (written) {
                         ConfigBackupStatus.ExportDone(gathered.backup.summary())
                     } else {
