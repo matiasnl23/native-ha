@@ -53,14 +53,28 @@ El workflow publica, junto al APK, un `release-metadata.json`:
 {
   "versionCode": 10402,
   "versionName": "1.4.2",
-  "apkUrl": "https://github.com/matiasnl23/native-ha/releases/download/v1.4.2/hakiosk-1.4.2.apk",
-  "sha256": "…",
-  "sizeBytes": 42123456,
   "minSdk": 26,
   "commit": "…",
-  "releaseUrl": "https://github.com/matiasnl23/native-ha/releases/tag/v1.4.2"
+  "releaseUrl": "https://github.com/matiasnl23/native-ha/releases/tag/v1.4.2",
+  "apks": {
+    "armeabi-v7a": { "url": "…/hakiosk-1.4.2-armeabi-v7a.apk", "sha256": "…", "sizeBytes": 18936062 },
+    "arm64-v8a":   { "url": "…/hakiosk-1.4.2-arm64-v8a.apk",   "sha256": "…", "sizeBytes": 24413964 },
+    "x86":         { "url": "…/hakiosk-1.4.2-x86.apk",         "sha256": "…", "sizeBytes": 24945282 },
+    "x86_64":      { "url": "…/hakiosk-1.4.2-x86_64.apk",      "sha256": "…", "sizeBytes": 28292995 },
+    "universal":   { "url": "…/hakiosk-1.4.2-universal.apk",   "sha256": "…", "sizeBytes": 60324507 }
+  }
 }
 ```
+
+**Selección del APK (contrato con el cliente de actualización):** la app recorre `Build.SUPPORTED_ABIS`
+en orden y se queda con la **primera** ABI que exista en `apks`; si no encuentra ninguna, usa
+`universal`. Nunca elige por `Build.CPU_ABI` (deprecado) ni asume arm64: la tablet vieja es
+armeabi-v7a. Si ni siquiera hay `universal`, no hay actualización posible y se reporta el error en vez
+de descargar algo que Android va a rechazar.
+
+Todos los APKs de una misma release comparten `versionCode` y `versionName` (no hay offsets por ABI),
+así que el `versionCode` de arriba es el que cada tablet compara contra el suyo, sin importar qué
+archivo le toque.
 
 La app compara el `versionCode` del metadata contra el suyo (`PackageInfo.longVersionCode`), no
 strings de versión. El flujo completo es: metadata → ¿hay versión mayor? → descargar el APK a
