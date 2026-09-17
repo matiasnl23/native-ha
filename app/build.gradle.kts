@@ -61,6 +61,25 @@ android {
             signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
+    // One APK per ABI, so a tablet downloads ~4x less on every over-the-air update, plus a universal
+    // one as a fallback for an ABI not listed here. This is NOT `abiFilters`: every architecture still
+    // ships, armeabi-v7a included, each in its own file.
+    //
+    // Only when `-PabiSplits` is passed (the release workflow does): a plain local build keeps
+    // producing a single app-debug.apk / app-release.apk, which is what docs/SETUP.md tells you to
+    // `adb install -r`.
+    //
+    // Every split keeps the SAME versionCode on purpose — no ABI offsets — because the versionCode
+    // published in release-metadata.json is the one each tablet compares against. See docs/RELEASE-OTA.md.
+    splits {
+        abi {
+            isEnable = providers.gradleProperty("abiSplits").isPresent
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
