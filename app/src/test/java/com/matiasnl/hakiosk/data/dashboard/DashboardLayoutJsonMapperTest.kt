@@ -265,6 +265,22 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `decodeStrict tells an unreadable layout apart from a readable one, unlike decode`() {
+        val layout = DashboardLayout(views = listOf(DashboardView(id = "v1", name = "Principal")))
+        val json = DashboardLayoutJsonMapper.encode(layout)
+
+        assertEquals(layout, DashboardLayoutJsonMapper.decodeStrict(json))
+        assertNull(DashboardLayoutJsonMapper.decodeStrict("{not valid json"))
+        assertNull(DashboardLayoutJsonMapper.decodeStrict("""{"version":1,"views":[]}"""))
+        // A format a future version writes: readable as JSON, but its meaning is anyone's guess.
+        assertNull(DashboardLayoutJsonMapper.decodeStrict("""{"version":99,"views":[{"id":"v1","name":"P"}]}"""))
+        // decode() keeps falling back instead, and still never asks the store to persist that fallback.
+        val fallback = DashboardLayoutJsonMapper.decode("""{"version":99,"views":[{"id":"v1","name":"P"}]}""", null)
+        assertEquals(DEFAULT_VIEW_ID, fallback.layout.views.single().id)
+        assertFalse(fallback.shouldPersist)
+    }
+
+    @Test
     fun `decode falls back to a default layout on corrupt legacy json without persisting it`() {
         val decoded = DashboardLayoutJsonMapper.decode(
             newFormatJson = null,

@@ -48,6 +48,21 @@ object DashboardLayoutJsonMapper {
         json.encodeToString(PersistedDashboardLayout(views = layout.views))
 
     /**
+     * Decodes the layout envelope, or null when [text] isn't one this version can read: not valid
+     * JSON, no views, or a [PersistedDashboardLayout.version] newer than [CURRENT_VERSION] (whose
+     * meaning this version can only guess at).
+     *
+     * Strict on purpose, unlike [decode]: callers that would otherwise replace the user's real
+     * layout with a default one — the config import — must be able to tell "unreadable" from "an
+     * empty dashboard" and refuse instead.
+     */
+    fun decodeStrict(text: String): DashboardLayout? =
+        runCatching { json.decodeFromString<PersistedDashboardLayout>(text) }
+            .getOrNull()
+            ?.takeIf { it.version <= CURRENT_VERSION && it.views.isNotEmpty() }
+            ?.let { DashboardLayout(it.views) }
+
+    /**
      * @param newFormatJson the current `dashboard_layout_json` value, if any.
      * @param legacyTilesJson the pre-multi-view `dashboard_tiles_json` value, if any.
      */
@@ -57,10 +72,7 @@ object DashboardLayoutJsonMapper {
         idProvider: DashboardIdProvider = UuidDashboardIdProvider,
     ): DecodedDashboardLayout {
         if (newFormatJson != null) {
-            val layout = runCatching { json.decodeFromString<PersistedDashboardLayout>(newFormatJson) }
-                .getOrNull()
-                ?.takeIf { it.views.isNotEmpty() }
-                ?.let { DashboardLayout(it.views) }
+            val layout = decodeStrict(newFormatJson)
             return DecodedDashboardLayout(layout ?: defaultDashboardLayout(), shouldPersist = false)
         }
         if (legacyTilesJson != null) {
