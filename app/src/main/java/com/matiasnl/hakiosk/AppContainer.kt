@@ -21,6 +21,10 @@ import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import com.matiasnl.hakiosk.data.ha.HaModule
 import com.matiasnl.hakiosk.data.ha.HaRepository
 import com.matiasnl.hakiosk.data.ha.camera.HaCameraSource
+import com.matiasnl.hakiosk.data.update.PostUpdateRestart
+import com.matiasnl.hakiosk.data.update.UpdateManager
+import com.matiasnl.hakiosk.data.update.UpdateModule
+import com.matiasnl.hakiosk.data.update.UpdatePreferencesStore
 
 /** Manual dependency container (no DI framework, keeps startup and RAM low). One instance per process. */
 class AppContainer(context: Context) {
@@ -29,6 +33,7 @@ class AppContainer(context: Context) {
     private val dashboard = DashboardModule(context.applicationContext)
     private val device = DeviceModule(context.applicationContext)
     private val display = DisplayModule(context.applicationContext)
+    private val update = UpdateModule(context.applicationContext, ha.okHttpClient)
 
     val haConfigStore: HaConfigStore get() = ha.configStore
     val haRepository: HaRepository get() = ha.repository
@@ -40,6 +45,15 @@ class AppContainer(context: Context) {
     val mqttConfigStore: MqttConfigStore get() = device.mqttConfigStore
     val mqttRemoteControl: MqttRemoteControl get() = device.mqttRemoteControl
     val displayPreferencesStore: DisplayPreferencesStore get() = display.preferencesStore
+    val updateManager: UpdateManager get() = update.manager
+    val updatePreferencesStore: UpdatePreferencesStore get() = update.preferencesStore
+
+    /**
+     * After the app updates itself its process was killed, so the MQTT connection is gone: starting the
+     * remote control again is what brings the tablet back to Home Assistant. Read by
+     * `PackageReplacedReceiver`.
+     */
+    val postUpdateRestart = PostUpdateRestart { mqttRemoteControl.start() }
 
     val configBackupFiles: ConfigBackupFiles by lazy { AndroidConfigBackupFiles(appContext) }
 

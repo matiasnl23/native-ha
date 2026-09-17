@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- Its notification; requested at runtime on Android 13+ by the UI. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      Over-the-air updates: the app hands the downloaded APK to PackageInstaller. The user grants
+      "install unknown apps" once in Settings (canRequestPackageInstalls); without Device Owner the
+      system still shows its own confirmation dialog on every install. See docs/RELEASE-OTA.md.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".HaKioskApp"
@@ -34,6 +40,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          The install kills the app's process, so after an over-the-air update nothing of ours is
+          running: this starts the background work again. It cannot bring the dashboard back to the
+          front (background activity starts are blocked on Android 10+); see the receiver's KDoc.
+        -->
+        <receiver
+            android:name=".data.update.android.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".data.device.service.RemoteControlService"
