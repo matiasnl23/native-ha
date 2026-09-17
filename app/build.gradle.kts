@@ -14,8 +14,11 @@ android {
         applicationId = "com.matiasnl.hakiosk"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // Release builds take these from the tag (`-PversionCode` / `-PversionName`, see
+        // .github/workflows/release.yml). A local build without the properties keeps the placeholders:
+        // versionCode must only ever grow, or installed tablets reject the update. See docs/RELEASE-OTA.md.
+        versionCode = providers.gradleProperty("versionCode").map(String::toInt).getOrElse(1)
+        versionName = providers.gradleProperty("versionName").getOrElse("1.0")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -30,6 +33,23 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+
+        // Release key: never in the repo. The CI decodes it from the PRODUCTION environment secrets and
+        // points these env vars at it; without them the build stays unsigned instead of failing, so
+        // `assembleRelease` still works locally. See docs/SETUP.md.
+        create("release") {
+            providers.environmentVariable("RELEASE_KEYSTORE_PATH").orNull?.let { path ->
+                storeFile = file(path)
+                storePassword = providers.environmentVariable("RELEASE_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").orNull
+            }
+            // Explicit instead of trusting AGP's defaults: targetSdk 30+ requires v2 or newer, and v1
+            // (JAR signing) is dead weight because every device on minSdk 26 verifies v2.
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
+        }
     }
 
     buildTypes {
@@ -37,6 +57,8 @@ android {
             optimization {
                 enable = false
             }
+            // Signed only when the key is available (the CI); unsigned otherwise.
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
     compileOptions {
