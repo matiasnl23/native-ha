@@ -129,7 +129,10 @@ private fun StatusText(status: ConfigBackupStatus) {
         ConfigBackupStatus.Idle -> return
         ConfigBackupStatus.Working -> stringResource(R.string.config_backup_working)
         ConfigBackupStatus.ExportDone -> stringResource(R.string.config_backup_export_done)
-        ConfigBackupStatus.ExportFailed -> stringResource(R.string.config_backup_export_failed)
+        is ConfigBackupStatus.ExportFailed -> when (status.failure) {
+            ConfigExportFailure.NotWritten -> stringResource(R.string.config_backup_export_failed)
+            ConfigExportFailure.UnreadableLayout -> stringResource(R.string.config_backup_export_failed_layout)
+        }
         ConfigBackupStatus.ImportDone -> stringResource(R.string.config_backup_import_done)
         is ConfigBackupStatus.ImportFailed -> when (val failure = status.failure) {
             ConfigImportFailure.Unreadable -> stringResource(R.string.config_backup_import_failed_unreadable)
@@ -141,7 +144,7 @@ private fun StatusText(status: ConfigBackupStatus) {
                 stringResource(R.string.config_backup_import_failed_future, failure.version)
         }
     }
-    val isError = status is ConfigBackupStatus.ImportFailed || status == ConfigBackupStatus.ExportFailed
+    val isError = status is ConfigBackupStatus.ImportFailed || status is ConfigBackupStatus.ExportFailed
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,

@@ -44,6 +44,13 @@ private class GatedDashboardLayoutStore(private val storedLayout: DashboardLayou
     }
 }
 
+/** The backup of a repository whose layout is readable; fails the test otherwise. */
+private suspend fun ConfigBackupRepository.available(): ConfigBackup {
+    val gathered = read()
+    check(gathered is GatheredConfigBackup.Available) { "expected Available but was $gathered" }
+    return gathered.backup
+}
+
 class ConfigBackupRepositoryTest {
 
     private val storedLayout = DashboardLayout(
@@ -91,7 +98,7 @@ class ConfigBackupRepositoryTest {
 
     @Test
     fun `read gathers what every store holds`() = runTest {
-        val backup = repository().read()
+        val backup = repository().available()
 
         assertEquals(appVersion, backup.app)
         assertEquals("2026-09-17T12:00:00Z", backup.exportedAt)
@@ -104,7 +111,7 @@ class ConfigBackupRepositoryTest {
 
     @Test
     fun `an exported file carries neither the token nor the broker password`() = runTest {
-        val json = ConfigBackupJsonMapper.encode(repository().read())
+        val json = ConfigBackupJsonMapper.encode(repository().available())
 
         assertFalse(json.contains("ha-token"))
         assertFalse(json.contains("broker-secret"))
@@ -115,7 +122,7 @@ class ConfigBackupRepositoryTest {
         val layoutStore = GatedDashboardLayoutStore(storedLayout)
         val repository = repository(layoutStore = layoutStore)
 
-        val export = async { repository.read() }
+        val export = async { repository.available() }
         runCurrent()
         assertFalse(export.isCompleted)
 
@@ -124,8 +131,18 @@ class ConfigBackupRepositoryTest {
     }
 
     @Test
+    fun `read refuses a stored layout that could not be decoded`() = runTest {
+        // The store hands out a valid-looking default layout; only isReadable says it's a stand-in.
+        val layoutStore = InMemoryDashboardLayoutStore(storedLayout, isReadable = false)
+
+        val gathered = repository(layoutStore = layoutStore).read()
+
+        assertEquals(GatheredConfigBackup.UnreadableLayout, gathered)
+    }
+
+    @Test
     fun `read reports no broker when remote control was never configured`() = runTest {
-        val backup = repository(mqttConfigStore = InMemoryMqttConfigStore()).read()
+        val backup = repository(mqttConfigStore = InMemoryMqttConfigStore()).available()
 
         assertNull(backup.mqtt)
     }
@@ -163,7 +180,7 @@ class ConfigBackupRepositoryTest {
         val haConfigStore = InMemoryHaConfigStore(HaServerConfig("https://old.local", "ha-token"))
         val repository = repository(haConfigStore = haConfigStore)
 
-        repository.apply(repository().read().copy(haBaseUrl = "https://imported.local:8443"))
+        repository.apply(repository().available().copy(haBaseUrl = "https://imported.local:8443"))
 
         assertEquals("https://imported.local:8443", haConfigStore.baseUrl.first())
         assertEquals(HaServerConfig("https://imported.local:8443", "ha-token"), haConfigStore.config.first())
@@ -173,7 +190,7 @@ class ConfigBackupRepositoryTest {
     fun `apply keeps the broker password already stored, which no file can carry`() = runTest {
         val mqttConfigStore = InMemoryMqttConfigStore(storedMqtt)
         val repository = repository(mqttConfigStore = mqttConfigStore)
-        val backup = repository().read()
+        val backup = repository().available()
 
         repository.apply(backup.copy(mqtt = backup.mqtt?.copy(host = "10.0.0.5", deviceName = "Tablet living")))
 
@@ -188,7 +205,7 @@ class ConfigBackupRepositoryTest {
         val mqttConfigStore = InMemoryMqttConfigStore(storedMqtt)
         val repository = repository(mqttConfigStore = mqttConfigStore)
 
-        repository.apply(repository().read().copy(mqtt = null))
+        repository.apply(repository().available().copy(mqtt = null))
 
         assertEquals(storedMqtt, mqttConfigStore.config.first())
     }
@@ -198,14 +215,25 @@ class ConfigBackupRepositoryTest {
         val displayStore = InMemoryDisplayPreferencesStore(DisplayPreferences(brightnessPercent = 55))
         val repository = repository(displayStore = displayStore)
 
-        repository.apply(repository().read().copy(display = DisplayPreferences(brightnessPercent = null)))
+        repository.apply(repository().available().copy(display = DisplayPreferences(brightnessPercent = null)))
 
         assertEquals(55, displayStore.preferences.value.brightnessPercent)
     }
 
     @Test
+    fun `an import can still repair a layout that could not be decoded`() = runTest {
+        // The whole point of the feature: a tablet whose stored layout is unreadable can't export,
+        // but it must be able to take a good file and overwrite the broken data with it.
+        val layoutStore = InMemoryDashboardLayoutStore(DashboardLayout(emptyList()), isReadable = false)
+
+        repository(layoutStore = layoutStore).apply(repository().available())
+
+        assertEquals(storedLayout, layoutStore.layout.value)
+    }
+
+    @Test
     fun `a file exported from one tablet restores the same configuration on another`() = runTest {
-        val exported = ConfigBackupJsonMapper.encode(repository().read())
+        val exported = ConfigBackupJsonMapper.encode(repository().available())
 
         // A freshly installed tablet: empty stores, no token, no broker password.
         val freshHa = InMemoryHaConfigStore()
@@ -219,7 +247,7 @@ class ConfigBackupRepositoryTest {
         check(decoded is ConfigBackupDecodeResult.Success) { "expected Success but was $decoded" }
         fresh.apply(decoded.backup)
 
-        assertEquals(decoded.backup, fresh.read())
+        assertEquals(decoded.backup, fresh.available())
         assertEquals(storedLayout, freshLayout.layout.value)
         // The two secrets the file can't carry: both still missing, as warned in the UI.
         assertNull(freshHa.config.first())

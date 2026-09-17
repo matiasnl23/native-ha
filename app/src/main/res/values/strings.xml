@@ -72,6 +72,7 @@
     <string name="config_backup_working">Un momento…</string>
     <string name="config_backup_export_done">Configuración exportada.</string>
     <string name="config_backup_export_failed">No se pudo escribir el archivo.</string>
+    <string name="config_backup_export_failed_layout">No se pudo leer el dashboard guardado, así que no se exportó nada. El dashboard que ves ahora está vacío por ese motivo: no lo edites, porque guardar encima reemplaza lo que hay en disco.</string>
     <string name="config_backup_cancel">Cancelar</string>
     <string name="config_backup_import_confirm_title">¿Importar esta configuración?</string>
     <string name="config_backup_import_confirm_message">Se reemplaza el dashboard actual y el resto de la configuración de esta tablet. No se puede deshacer.</string>

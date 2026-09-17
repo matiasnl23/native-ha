@@ -9,6 +9,19 @@ import com.matiasnl.hakiosk.data.ha.HaConfigStore
 import java.time.Instant
 import kotlinx.coroutines.flow.first
 
+/** What [ConfigBackupRepository.read] found. */
+sealed interface GatheredConfigBackup {
+    data class Available(val backup: ConfigBackup) : GatheredConfigBackup
+
+    /**
+     * The persisted dashboard layout couldn't be decoded, so what the app shows is a default
+     * stand-in (see [com.matiasnl.hakiosk.data.dashboard.StoredDashboardLayout]). Exporting it would
+     * save an empty dashboard as if it were the user's, and that file would later be restored over
+     * the real one after the reinstall — precisely the loss this feature exists to prevent.
+     */
+    data object UnreadableLayout : GatheredConfigBackup
+}
+
 /**
  * Gathers a [ConfigBackup] from the stores and writes one back into them. Knows nothing about files
  * or JSON (see [ConfigBackupJsonMapper]) — only about what a backup is made of.
@@ -24,40 +37,47 @@ class ConfigBackupRepository(
 ) {
 
     /**
-     * Reads what is actually persisted right now.
+     * Reads what is actually persisted right now, or refuses when the dashboard can't be trusted.
      *
-     * Every value comes from `first()` on the store's own flow, never from a snapshot of a
-     * [kotlinx.coroutines.flow.StateFlow] that might still be holding a placeholder: it suspends
-     * until the stored value has really been read, so an export can't write an empty dashboard over
-     * a perfectly good one on the way to the file. Same rule as
-     * [com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel.enterEditMode], which refuses to act
-     * until the real layout has loaded.
+     * Two different placeholders have to be kept out of the file, and each needs its own guard:
+     * - *Not loaded yet*: every value comes from `first()` on the store's own flow, never from a
+     *   snapshot of a [kotlinx.coroutines.flow.StateFlow] that might still hold its initial value.
+     *   It suspends until the stored value has really been read. Same rule as
+     *   [com.matiasnl.hakiosk.ui.dashboard.DashboardViewModel.enterEditMode].
+     * - *Loaded, but not the user's data*: a layout that couldn't be decoded still arrives as a
+     *   perfectly valid default [DashboardLayout]. `first()` can't tell that apart, so
+     *   [com.matiasnl.hakiosk.data.dashboard.StoredDashboardLayout.isReadable] does, and this
+     *   returns [GatheredConfigBackup.UnreadableLayout] instead of exporting the stand-in.
      */
-    suspend fun read(): ConfigBackup {
-        val layout = dashboardLayoutStore.layout.first()
+    suspend fun read(): GatheredConfigBackup {
+        val stored = dashboardLayoutStore.stored.first()
+        if (!stored.isReadable) return GatheredConfigBackup.UnreadableLayout
+
         val dashboardPreferences = viewPreferencesStore.preferences.first()
         val display = displayPreferencesStore.preferences.first()
         val mqtt = mqttConfigStore.config.first()
         val baseUrl = haConfigStore.baseUrl.first()
 
-        return ConfigBackup(
-            app = appVersion,
-            exportedAt = clock().toString(),
-            haBaseUrl = baseUrl,
-            layout = layout,
-            dashboardPreferences = dashboardPreferences,
-            display = display,
-            // Rebuilt field by field into a type with no password, rather than passed along: the
-            // broker password is encrypted with a Keystore key and must never reach the file.
-            mqtt = mqtt?.let {
-                MqttBackup(
-                    host = it.host,
-                    port = it.port,
-                    username = it.username,
-                    useTls = it.useTls,
-                    deviceName = it.deviceName,
-                )
-            },
+        return GatheredConfigBackup.Available(
+            ConfigBackup(
+                app = appVersion,
+                exportedAt = clock().toString(),
+                haBaseUrl = baseUrl,
+                layout = stored.layout,
+                dashboardPreferences = dashboardPreferences,
+                display = display,
+                // Rebuilt field by field into a type with no password, rather than passed along: the
+                // broker password is encrypted with a Keystore key and must never reach the file.
+                mqtt = mqtt?.let {
+                    MqttBackup(
+                        host = it.host,
+                        port = it.port,
+                        username = it.username,
+                        useTls = it.useTls,
+                        deviceName = it.deviceName,
+                    )
+                },
+            ),
         )
     }
 

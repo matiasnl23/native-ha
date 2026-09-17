@@ -6,6 +6,7 @@ import com.matiasnl.hakiosk.data.config.ConfigBackupFiles
 import com.matiasnl.hakiosk.data.config.ConfigBackupJsonMapper
 import com.matiasnl.hakiosk.data.config.ConfigBackupReadResult
 import com.matiasnl.hakiosk.data.config.ConfigBackupRepository
+import com.matiasnl.hakiosk.data.config.GatheredConfigBackup
 import com.matiasnl.hakiosk.data.config.MqttBackup
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardTile
@@ -123,7 +124,31 @@ class ConfigBackupViewModelTest {
         assertEquals(ConfigBackupStatus.ExportDone, viewModel.uiState.value.status)
         assertEquals("content://new-file", files.writtenUri)
         val written = requireNotNull(files.written)
-        assertEquals(ConfigBackupJsonMapper.encode(repository.read()), written)
+        val gathered = repository.read()
+        check(gathered is GatheredConfigBackup.Available)
+        assertEquals(ConfigBackupJsonMapper.encode(gathered.backup), written)
+    }
+
+    @Test
+    fun `export refuses a dashboard that could not be read, instead of saving an empty one`() = runTest {
+        val unreadableRepository = ConfigBackupRepository(
+            haConfigStore = haConfigStore,
+            // Persisted data that failed to decode: the store hands out a default stand-in.
+            dashboardLayoutStore = InMemoryDashboardLayoutStore(storedLayout, isReadable = false),
+            viewPreferencesStore = InMemoryDashboardViewPreferencesStore(),
+            displayPreferencesStore = InMemoryDisplayPreferencesStore(),
+            mqttConfigStore = mqttConfigStore,
+            appVersion = ConfigBackupAppVersion("1.0.1", 10001),
+        )
+        val viewModel = ConfigBackupViewModel(unreadableRepository, files, today = { LocalDate.of(2026, 9, 17) })
+
+        viewModel.export("content://new-file")
+
+        assertEquals(
+            ConfigBackupStatus.ExportFailed(ConfigExportFailure.UnreadableLayout),
+            viewModel.uiState.value.status,
+        )
+        assertNull(files.written)
     }
 
     @Test
@@ -133,7 +158,10 @@ class ConfigBackupViewModelTest {
 
         viewModel.export("content://new-file")
 
-        assertEquals(ConfigBackupStatus.ExportFailed, viewModel.uiState.value.status)
+        assertEquals(
+            ConfigBackupStatus.ExportFailed(ConfigExportFailure.NotWritten),
+            viewModel.uiState.value.status,
+        )
         assertNull(files.written)
     }
 

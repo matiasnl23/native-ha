@@ -11,6 +11,7 @@ import com.matiasnl.hakiosk.data.config.ConfigBackupJsonMapper
 import com.matiasnl.hakiosk.data.config.ConfigBackupReadResult
 import com.matiasnl.hakiosk.data.config.ConfigBackupRepository
 import com.matiasnl.hakiosk.data.config.ConfigBackupSummary
+import com.matiasnl.hakiosk.data.config.GatheredConfigBackup
 import com.matiasnl.hakiosk.data.config.suggestedBackupFileName
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,13 +32,22 @@ sealed interface ConfigImportFailure {
     data object NotWritten : ConfigImportFailure
 }
 
+/** Why an export didn't happen. Nothing reached the chosen file in either case. */
+sealed interface ConfigExportFailure {
+    /** The file couldn't be written: permission lost, storage full, provider gone. */
+    data object NotWritten : ConfigExportFailure
+
+    /** The stored dashboard couldn't be read, so there was nothing trustworthy to export. */
+    data object UnreadableLayout : ConfigExportFailure
+}
+
 sealed interface ConfigBackupStatus {
     data object Idle : ConfigBackupStatus
 
     /** Reading or writing. Both actions stay disabled meanwhile. */
     data object Working : ConfigBackupStatus
     data object ExportDone : ConfigBackupStatus
-    data object ExportFailed : ConfigBackupStatus
+    data class ExportFailed(val failure: ConfigExportFailure) : ConfigBackupStatus
     data object ImportDone : ConfigBackupStatus
     data class ImportFailed(val failure: ConfigImportFailure) : ConfigBackupStatus
 }
@@ -80,13 +90,24 @@ class ConfigBackupViewModel(
         if (_uiState.value.isBusy) return
         startWorking()
         viewModelScope.launch {
-            // read() suspends until the stores have really loaded, so this can never write a
-            // placeholder over the user's configuration into the file.
-            val content = runCatching { ConfigBackupJsonMapper.encode(repository.read()) }.getOrNull()
-            val written = content != null && files.write(uri, content)
-            _uiState.update {
-                it.copy(status = if (written) ConfigBackupStatus.ExportDone else ConfigBackupStatus.ExportFailed)
+            // read() suspends until the stores have really loaded, and refuses outright when the
+            // stored layout couldn't be decoded: neither placeholder can reach the file.
+            val status = when (val gathered = runCatching { repository.read() }.getOrNull()) {
+                is GatheredConfigBackup.Available -> {
+                    val written = files.write(uri, ConfigBackupJsonMapper.encode(gathered.backup))
+                    if (written) {
+                        ConfigBackupStatus.ExportDone
+                    } else {
+                        ConfigBackupStatus.ExportFailed(ConfigExportFailure.NotWritten)
+                    }
+                }
+
+                GatheredConfigBackup.UnreadableLayout ->
+                    ConfigBackupStatus.ExportFailed(ConfigExportFailure.UnreadableLayout)
+
+                null -> ConfigBackupStatus.ExportFailed(ConfigExportFailure.NotWritten)
             }
+            _uiState.update { it.copy(status = status) }
         }
     }
 
