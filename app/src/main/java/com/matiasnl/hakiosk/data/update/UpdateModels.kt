@@ -130,7 +130,14 @@ sealed interface UpdatePhase {
 data class UpdateStatus(
     val installedVersionCode: Long = 0,
     val installedVersionName: String = "",
-    /** The newest release found, only when it is newer than the installed one; null otherwise. */
+    /**
+     * The newest release found, only when it is newer than the installed one; null otherwise.
+     *
+     * Survives a failed check on purpose: after a network error this still holds what the last
+     * successful check found, while [phase] is [UpdatePhase.Failed]. The two are independent, so the UI
+     * has to be able to show both at once ("1.0.2 available" and "last check failed") and must never
+     * read one as implying the other.
+     */
     val available: ReleaseMetadata? = null,
     val phase: UpdatePhase = UpdatePhase.Idle,
     val lastCheckEpochMillis: Long? = null,
