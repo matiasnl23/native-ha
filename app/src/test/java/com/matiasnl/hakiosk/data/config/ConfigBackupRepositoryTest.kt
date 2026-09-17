@@ -7,6 +7,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferences
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardViewPreferencesStore
+import com.matiasnl.hakiosk.data.dashboard.StoredDashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.TileContent
 import com.matiasnl.hakiosk.data.device.MqttConfig
 import com.matiasnl.hakiosk.data.device.fake.InMemoryMqttConfigStore
@@ -28,12 +29,12 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** Layout store whose flow only emits once [release] is called, like DataStore's first real read. */
-private class GatedDashboardLayoutStore(private val stored: DashboardLayout) : DashboardLayoutStore {
+private class GatedDashboardLayoutStore(private val storedLayout: DashboardLayout) : DashboardLayoutStore {
     private val gate = CompletableDeferred<Unit>()
 
-    override val layout: Flow<DashboardLayout> = flow {
+    override val stored: Flow<StoredDashboardLayout> = flow {
         gate.await()
-        emit(stored)
+        emit(StoredDashboardLayout(storedLayout))
     }
 
     override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) = Unit

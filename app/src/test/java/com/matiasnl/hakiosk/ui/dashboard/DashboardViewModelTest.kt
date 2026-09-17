@@ -10,6 +10,7 @@ import com.matiasnl.hakiosk.data.dashboard.setGrid
 import com.matiasnl.hakiosk.ui.dashboard.grid.GridPlacement
 import org.junit.Assert.assertSame
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.StoredDashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardLayoutStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -100,17 +101,18 @@ private fun layoutWithTile(entityId: String, label: String? = null) = layoutWith
 /** A store whose layout hasn't loaded yet (never emits); records whether anything was written. */
 private class NotYetLoadedLayoutStore : DashboardLayoutStore {
     var updates = 0
-    override val layout: Flow<DashboardLayout> = emptyFlow()
+    override val stored: Flow<StoredDashboardLayout> = emptyFlow()
     override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {
         updates++
     }
 }
 
 /** In-memory store that counts [update] calls, to assert Listo writes exactly once. */
-private class CountingLayoutStore(initial: DashboardLayout) : DashboardLayoutStore {
-    private val delegate = InMemoryDashboardLayoutStore(initial)
+private class CountingLayoutStore(initial: DashboardLayout, isReadable: Boolean = true) : DashboardLayoutStore {
+    private val delegate = InMemoryDashboardLayoutStore(initial, isReadable)
     var updates = 0
     override val layout: StateFlow<DashboardLayout> = delegate.layout
+    override val stored: Flow<StoredDashboardLayout> = delegate.stored
     override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {
         updates++
         delegate.update(transform)

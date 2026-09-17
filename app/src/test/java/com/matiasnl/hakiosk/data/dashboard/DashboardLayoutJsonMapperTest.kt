@@ -265,6 +265,22 @@ class DashboardLayoutJsonMapperTest {
     }
 
     @Test
+    fun `decode reports whether the stored layout could actually be read`() {
+        val stored = DashboardLayoutJsonMapper.encode(DashboardLayout(listOf(DashboardView("v1", "Principal"))))
+
+        // Real stored data, and a fresh install: both are the user's real current state.
+        assertTrue(DashboardLayoutJsonMapper.decode(stored, null).isReadable)
+        assertTrue(DashboardLayoutJsonMapper.decode(null, null).isReadable)
+        assertTrue(DashboardLayoutJsonMapper.decode(null, """[{"entityId":"light.a"}]""").isReadable)
+
+        // Something IS stored and we couldn't read it: the default layout below is only a stand-in.
+        assertFalse(DashboardLayoutJsonMapper.decode("{not valid json", null).isReadable)
+        assertFalse(DashboardLayoutJsonMapper.decode("""{"version":1,"views":[]}""", null).isReadable)
+        assertFalse(DashboardLayoutJsonMapper.decode("""{"version":99,"views":[{"id":"v","name":"V"}]}""", null).isReadable)
+        assertFalse(DashboardLayoutJsonMapper.decode(null, "not an array").isReadable)
+    }
+
+    @Test
     fun `decodeStrict tells an unreadable layout apart from a readable one, unlike decode`() {
         val layout = DashboardLayout(views = listOf(DashboardView(id = "v1", name = "Principal")))
         val json = DashboardLayoutJsonMapper.encode(layout)

@@ -24,10 +24,10 @@ class DataStoreDashboardLayoutStore(
     private val idProvider: DashboardIdProvider = UuidDashboardIdProvider,
 ) : DashboardLayoutStore {
 
-    override val layout: Flow<DashboardLayout> = context.dashboardDataStore.data.map { prefs ->
+    override val stored: Flow<StoredDashboardLayout> = context.dashboardDataStore.data.map { prefs ->
         val decoded = DashboardLayoutJsonMapper.decode(prefs[LAYOUT_KEY], prefs[LEGACY_TILES_KEY], idProvider)
         if (decoded.shouldPersist) persistMigration(decoded.layout)
-        decoded.layout
+        StoredDashboardLayout(decoded.layout, isReadable = decoded.isReadable)
     }
 
     override suspend fun update(transform: (DashboardLayout) -> DashboardLayout) {

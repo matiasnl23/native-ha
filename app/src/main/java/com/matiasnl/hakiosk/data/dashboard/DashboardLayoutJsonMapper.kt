@@ -28,6 +28,14 @@ data class DecodedDashboardLayout(
      * case it's actually recoverable by a future version of the app.
      */
     val shouldPersist: Boolean,
+    /**
+     * False when data *was* stored but couldn't be decoded: [layout] is then a default stand-in, not
+     * the user's dashboard. Anything that would write it back (edit mode) or copy it as if it were
+     * the real configuration (the config export) must refuse while this is false, or the stand-in
+     * replaces the very data it is standing in for. True for a fresh install, where nothing is
+     * stored and the default layout genuinely is the current state.
+     */
+    val isReadable: Boolean = true,
 )
 
 /**
@@ -73,7 +81,11 @@ object DashboardLayoutJsonMapper {
     ): DecodedDashboardLayout {
         if (newFormatJson != null) {
             val layout = decodeStrict(newFormatJson)
-            return DecodedDashboardLayout(layout ?: defaultDashboardLayout(), shouldPersist = false)
+            return DecodedDashboardLayout(
+                layout = layout ?: defaultDashboardLayout(),
+                shouldPersist = false,
+                isReadable = layout != null,
+            )
         }
         if (legacyTilesJson != null) {
             val legacyTiles = runCatching { json.decodeFromString<List<LegacyDashboardTile>>(legacyTilesJson) }.getOrNull()
@@ -84,7 +96,10 @@ object DashboardLayoutJsonMapper {
                 val view = DashboardView(id = idProvider.newId(), name = PRINCIPAL_VIEW_NAME, tiles = migratedTiles)
                 return DecodedDashboardLayout(DashboardLayout(views = listOf(view)), shouldPersist = true)
             }
+            // Legacy data is there but unreadable: still stored data we failed to decode.
+            return DecodedDashboardLayout(defaultDashboardLayout(), shouldPersist = false, isReadable = false)
         }
+        // Nothing stored at all: a fresh install, where the default layout is the real current state.
         return DecodedDashboardLayout(defaultDashboardLayout(), shouldPersist = false)
     }
 }
