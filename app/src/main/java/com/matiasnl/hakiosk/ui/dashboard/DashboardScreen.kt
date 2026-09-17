@@ -453,7 +453,11 @@ private fun DashboardContent(
                         TextButton(onClick = onOpenGridSettings) { Text(stringResource(R.string.dashboard_edit_grid)) }
                         TextButton(onClick = onDoneEdit) { Text(stringResource(R.string.dashboard_edit_done)) }
                     } else {
-                        TextButton(onClick = onEnterEdit) { Text(stringResource(R.string.dashboard_edit_mode)) }
+                        // Disabled rather than silently doing nothing when the stored layout couldn't
+                        // be read; the empty state below spells out why and how to fix it.
+                        TextButton(onClick = onEnterEdit, enabled = uiState.isLayoutReadable) {
+                            Text(stringResource(R.string.dashboard_edit_mode))
+                        }
                         TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.dashboard_settings)) }
                     }
                 },
@@ -498,6 +502,7 @@ private fun DashboardContent(
                 DashboardPage(
                     page = page,
                     isEditing = uiState.isEditing,
+                    isLayoutReadable = uiState.isLayoutReadable,
                     isEditedPage = uiState.isEditing && index == uiState.currentPage,
                     isSettled = isSettled,
                     scrollState = scrollStates.getOrPut(page.viewId) { ScrollState(0) },
@@ -508,6 +513,7 @@ private fun DashboardContent(
                     onTileClimateTurnOn = onTileClimateTurnOn,
                     onViewLinkClick = onViewLinkClick,
                     onEnterEdit = onEnterEdit,
+                    onOpenSettings = onOpenSettings,
                     onMoveTile = onMoveTile,
                     onDragActiveChange = onDragActiveChange,
                     onEditTile = onEditTile,
@@ -565,6 +571,7 @@ private fun DashboardTitle(uiState: DashboardUiState, pagerState: PagerState?) {
 private fun DashboardPage(
     page: DashboardPageUi,
     isEditing: Boolean,
+    isLayoutReadable: Boolean,
     isEditedPage: Boolean,
     isSettled: State<Boolean>,
     scrollState: ScrollState,
@@ -575,6 +582,7 @@ private fun DashboardPage(
     onTileClimateTurnOn: (DashboardTileUiState) -> Unit,
     onViewLinkClick: (ViewLinkTileUiState) -> Unit,
     onEnterEdit: () -> Unit,
+    onOpenSettings: () -> Unit,
     onMoveTile: (fromIndex: Int, toIndex: Int) -> Unit,
     onDragActiveChange: (active: Boolean) -> Unit,
     onEditTile: (tileId: String) -> Unit,
@@ -583,7 +591,14 @@ private fun DashboardPage(
 ) {
     if (page.tiles.isEmpty()) {
         // While editing only the edited page has content (its "＋"); a neighbour shown mid-scroll stays blank.
-        if (!isEditing) EmptyDashboard(onAddTiles = onEnterEdit, modifier = Modifier.fillMaxSize())
+        if (!isEditing) {
+            EmptyDashboard(
+                isLayoutReadable = isLayoutReadable,
+                onAddTiles = onEnterEdit,
+                onOpenSettings = onOpenSettings,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         return
     }
     DashboardGrid(
@@ -736,27 +751,49 @@ private fun ConnectionBanner(
     }
 }
 
-/** Shown outside edit mode when the view has no tiles; its action enters edit mode, where "＋" adds tiles. */
+/**
+ * Shown outside edit mode when the view has no tiles; its action enters edit mode, where "＋" adds
+ * tiles.
+ *
+ * When the stored layout couldn't be decoded the page is empty for an entirely different reason, and
+ * inviting the user to add buttons would be a lie: editing is refused, and what actually helps is
+ * importing a backup. So it says that instead.
+ */
 @Composable
-private fun EmptyDashboard(onAddTiles: () -> Unit, modifier: Modifier = Modifier) {
+private fun EmptyDashboard(
+    isLayoutReadable: Boolean,
+    onAddTiles: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier.padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
         Text(
-            text = stringResource(R.string.dashboard_empty_title),
+            text = stringResource(
+                if (isLayoutReadable) R.string.dashboard_empty_title else R.string.dashboard_unreadable_title,
+            ),
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            text = stringResource(R.string.dashboard_empty_message),
+            text = stringResource(
+                if (isLayoutReadable) R.string.dashboard_empty_message else R.string.dashboard_unreadable_message,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = onAddTiles, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.dashboard_empty_action))
+        if (isLayoutReadable) {
+            Button(onClick = onAddTiles, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.dashboard_empty_action))
+            }
+        } else {
+            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.dashboard_unreadable_action))
+            }
         }
     }
 }

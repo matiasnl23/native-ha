@@ -189,6 +189,13 @@ data class DashboardUiState(
     val linkTargets: List<LinkTargetOption> = emptyList(),
     /** Minutes without touches before returning to the first view (outside edit mode); 0 = disabled. */
     val inactivityReturnMinutes: Int = 0,
+    /**
+     * False when the persisted layout couldn't be decoded, so [pages] show a default stand-in rather
+     * than the user's dashboard. Editing is refused while it's false (see
+     * [DashboardViewModel.enterEditMode]); the screen uses this to say why instead of just looking
+     * like an empty dashboard the user is invited to fill in.
+     */
+    val isLayoutReadable: Boolean = true,
 ) {
     /** The page at [currentPage] (the edited view while editing), or null before the layout loads. */
     val currentPageUi: DashboardPageUi? get() = pages.getOrNull(currentPage)
@@ -231,6 +238,7 @@ private data class LayoutStructure(
     val isEditing: Boolean,
     val isDirty: Boolean,
     val linkTargets: List<LinkTargetOption>,
+    val isLayoutReadable: Boolean = true,
 ) {
     companion object {
         val NotLoaded = LayoutStructure(false, emptyList(), 0, emptyMap(), false, false, emptyList())
@@ -348,7 +356,7 @@ class DashboardViewModel(
         alreadyAddedIds = editingEntityIds,
     )
 
-    private val structure = combine(layoutState, editController.state, selection) { stored, edit, selection ->
+    private val structure = combine(storedState, editController.state, selection) { stored, edit, selection ->
         buildStructure(stored, edit, selection)
     }.distinctUntilChanged()
 
@@ -370,6 +378,7 @@ class DashboardViewModel(
             isDirty = structure.isDirty,
             linkTargets = structure.linkTargets,
             inactivityReturnMinutes = inactivityMinutes,
+            isLayoutReadable = structure.isLayoutReadable,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
@@ -644,8 +653,12 @@ class DashboardViewModel(
         lastViewSaveRequests.tryEmit(viewId)
     }
 
-    private fun buildStructure(stored: DashboardLayout?, edit: DashboardEditState, selection: ViewSelection?): LayoutStructure {
-        val layout = edit.working ?: stored ?: return LayoutStructure.NotLoaded
+    private fun buildStructure(
+        stored: StoredDashboardLayout?,
+        edit: DashboardEditState,
+        selection: ViewSelection?,
+    ): LayoutStructure {
+        val layout = edit.working ?: stored?.layout ?: return LayoutStructure.NotLoaded
         val currentViewId = if (edit.isEditing) edit.editingViewId else resolveViewId(layout, selection?.viewId)
         val pages = layout.views.map { view ->
             pageStructure(view, showAddTile = edit.isEditing && view.id == edit.editingViewId)
@@ -659,6 +672,8 @@ class DashboardViewModel(
             isEditing = edit.isEditing,
             isDirty = edit.isDirty,
             linkTargets = edit.linkTargets,
+            // The working copy is the user's own edit, so only the persisted side can be a stand-in.
+            isLayoutReadable = stored?.isReadable != false,
         )
     }
 

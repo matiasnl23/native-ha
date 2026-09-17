@@ -72,7 +72,7 @@
     <string name="config_backup_working">Un momento…</string>
     <string name="config_backup_export_done">Configuración exportada: %1$d vistas y %2$d botones.</string>
     <string name="config_backup_export_failed">No se pudo escribir el archivo.</string>
-    <string name="config_backup_export_failed_layout">No se pudo leer el dashboard guardado, así que no se exportó nada. El dashboard que ves ahora está vacío por ese motivo: no lo edites, porque guardar encima reemplaza lo que hay en disco.</string>
+    <string name="config_backup_export_failed_layout">No se pudo leer el dashboard guardado, así que no se exportó nada. El dashboard que ves ahora está vacío por ese motivo; importá una copia de la configuración para recuperarlo.</string>
     <string name="config_backup_cancel">Cancelar</string>
     <string name="config_backup_import_confirm_title">¿Importar esta configuración?</string>
     <string name="config_backup_import_confirm_message">Se reemplaza el dashboard actual y el resto de la configuración de esta tablet. No se puede deshacer.</string>
@@ -98,6 +98,9 @@
     <string name="dashboard_empty_title">Todavía no hay botones</string>
     <string name="dashboard_empty_message">Agregá entidades de Home Assistant para verlas acá.</string>
     <string name="dashboard_empty_action">Agregar botones</string>
+    <string name="dashboard_unreadable_title">No se pudo leer el dashboard guardado</string>
+    <string name="dashboard_unreadable_message">La configuración guardada en esta tablet está dañada o la escribió una versión más nueva de la app. Por eso no se puede editar el dashboard: importá una copia de la configuración para recuperarlo.</string>
+    <string name="dashboard_unreadable_action">Abrir configuración</string>
     <string name="dashboard_service_call_error">No se pudo ejecutar la acción en %1$s: %2$s</string>
     <string name="dashboard_state_unavailable">No disponible</string>
     <string name="dashboard_state_missing">Entidad no encontrada</string>

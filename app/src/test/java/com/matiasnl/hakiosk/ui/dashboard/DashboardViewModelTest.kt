@@ -151,6 +151,24 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `an unreadable stored layout is reported to the screen, so it can say why`() = runTest {
+        val store = CountingLayoutStore(layoutWithTile("light.kitchen"), isReadable = false)
+        val viewModel = DashboardViewModel(FakeHaRepository(initialEntities = emptyList()), store)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertFalse(viewModel.uiState.value.isLayoutReadable)
+    }
+
+    @Test
+    fun `a layout that was read normally is not flagged as unreadable`() = runTest {
+        val store = CountingLayoutStore(layoutWithTile("light.kitchen"))
+        val viewModel = DashboardViewModel(FakeHaRepository(initialEntities = emptyList()), store)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        assertTrue(viewModel.uiState.value.isLayoutReadable)
+    }
+
+    @Test
     fun `edit mode cannot start when the stored layout could not be read, so Listo can't overwrite it`() = runTest {
         // What the store hands out when the persisted JSON is corrupt or written by a newer version:
         // an ordinary-looking layout that is only a stand-in for data still sitting on disk.
