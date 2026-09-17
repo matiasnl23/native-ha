@@ -83,9 +83,10 @@ Al importar se avisa explícitamente que el token hay que volver a pegarlo.
 - Agente: `android-ui` (**Opus**: toca persistencia real del usuario, es donde más caro sale un error).
 
 ### Etapa 1 — Build de release firmada + GitHub Actions ✅
-Sin cambios visibles en la app. Queda pendiente la primera corrida real, que se dispara con el primer
-tag `v*`; todo lo demás está verificado localmente (release sin firmar sin la clave, release firmada
-v2+v3 con una clave descartable, y `versionCode`/`versionName` tomados de las propiedades).
+Sin cambios visibles en la app. Verificado de punta a punta con la release **`v1.0.1`**: el workflow
+compiló, firmó y publicó el APK, el `release-metadata.json` se lee desde la URL estable
+`releases/latest/download/`, y sobre el APK descargado de esa release coinciden el tamaño y el SHA-256
+declarados (el mismo chequeo que hará la app) con firma v2+v3 de la clave de release.
 - `signingConfigs { create("release") }` leyendo la keystore desde variables de entorno y aplicándose
   solo si existen, para que `./gradlew assembleRelease` siga funcionando localmente sin secrets.
   `enableV2Signing` y `enableV3Signing` explícitos, sin depender del default de AGP.
