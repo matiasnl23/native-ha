@@ -3,8 +3,10 @@ package com.matiasnl.hakiosk.data.update
 import android.content.Intent
 import java.io.File
 import kotlin.random.Random
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -280,6 +282,81 @@ class UpdateManagerTest {
         assertNull(manager.pendingConfirmation.value)
     }
 
+    // ---- one step at a time ----
+
+    @Test
+    fun `two install requests at once download only once`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        val manager = manager()
+        manager.checkNow()
+        installer.gate = CompletableDeferred()
+
+        manager.requestInstall()
+        manager.requestInstall()
+        runCurrent()
+
+        assertEquals("the second request downloaded again", 1, downloader.requested.size)
+        installer.gate?.complete(Unit)
+        runCurrent()
+    }
+
+    @Test
+    fun `a check while an install is running is skipped, not queued`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        val manager = manager()
+        manager.checkNow()
+        installer.gate = CompletableDeferred()
+        backgroundScope.launch { manager.downloadAndInstall() }
+        runCurrent()
+
+        val result = manager.checkNow()
+
+        assertEquals(UpdateError.AlreadyRunning, result.exceptionOrNull()?.toUpdateError())
+        // The install's phase survives: a skipped check must not report itself as the current state.
+        assertEquals(UpdatePhase.Installing, manager.status.value.phase)
+        assertEquals(1, metadataSource.calls)
+        installer.gate?.complete(Unit)
+        runCurrent()
+    }
+
+    @Test
+    fun `the schedule waits its turn instead of stomping an install`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        preferences.setCheckIntervalHours(1)
+        val manager = manager()
+        manager.checkNow()
+        installer.gate = CompletableDeferred()
+        backgroundScope.launch { manager.downloadAndInstall() }
+        runCurrent()
+
+        manager.start()
+        advanceTimeBy(3 * HOUR)
+
+        assertEquals(UpdatePhase.Installing, manager.status.value.phase)
+        assertEquals("the schedule ran a check during the install", 1, metadataSource.calls)
+        installer.gate?.complete(Unit)
+        runCurrent()
+    }
+
+    @Test
+    fun `the schedule resumes checking once the install is done`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        preferences.setCheckIntervalHours(1)
+        val manager = manager()
+        manager.checkNow()
+        installer.gate = CompletableDeferred()
+        backgroundScope.launch { manager.downloadAndInstall() }
+        runCurrent()
+        manager.start()
+        advanceTimeBy(HOUR + 1)
+        assertEquals(1, metadataSource.calls)
+
+        installer.gate?.complete(Unit)
+        advanceTimeBy(HOUR)
+
+        assertTrue("the schedule never recovered", metadataSource.calls > 1)
+    }
+
     // ---- crash safety ----
 
     @Test
@@ -503,6 +580,9 @@ class UpdateManagerTest {
         override val pendingConfirmation: StateFlow<PendingInstallConfirmation?> = pending
         val launched = mutableListOf<PendingInstallConfirmation>()
         var failure: UpdateError? = null
+
+        /** Holds the install open, standing in for a confirmation dialog nobody has tapped yet. */
+        var gate: CompletableDeferred<Unit>? = null
         val installed = mutableListOf<File>()
 
         override fun confirmationLaunched(confirmation: PendingInstallConfirmation) {
@@ -511,6 +591,7 @@ class UpdateManagerTest {
 
         override suspend fun install(apk: File): Result<Unit> {
             installed += apk
+            gate?.await()
             return failure?.let { Result.failure(UpdateFailureException(it)) } ?: Result.success(Unit)
         }
     }

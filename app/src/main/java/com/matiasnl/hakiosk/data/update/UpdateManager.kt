@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -106,9 +105,12 @@ class UpdateManager(
         scope.launch { quietly("check") { checkNow() } }
     }
 
-    /** Fire-and-forget download + verify + install. Ignored while another step is running. */
+    /**
+     * Fire-and-forget download + verify + install. Ignored while another step is running — decided by
+     * the lock inside [downloadAndInstall], not by reading the phase first, which two callers arriving
+     * together would both pass.
+     */
     fun requestInstall() {
-        if (_status.value.inProgress) return
         scope.launch { quietly("install") { downloadAndInstall() } }
     }
 
@@ -117,18 +119,26 @@ class UpdateManager(
      * date, and a typed failure otherwise. Records the attempt either way so a broken network doesn't
      * turn into a retry loop.
      */
-    suspend fun checkNow(): Result<ReleaseMetadata?> = mutex.withLock {
-        setPhase(UpdatePhase.Checking)
+    suspend fun checkNow(): Result<ReleaseMetadata?> {
+        // tryLock, never withLock: waiting would queue this behind an install that can sit on its
+        // confirmation dialog for minutes, and it would then overwrite the phase with "checking" just as
+        // that install finished.
+        if (!mutex.tryLock()) return skipped("check")
         try {
-            metadataSource.fetch().fold(
-                onSuccess = { metadata -> evaluate(metadata) },
-                onFailure = { error -> fail(error.toUpdateError()) },
-            )
+            setPhase(UpdatePhase.Checking)
+            return try {
+                metadataSource.fetch().fold(
+                    onSuccess = { metadata -> evaluate(metadata) },
+                    onFailure = { error -> fail(error.toUpdateError()) },
+                )
+            } finally {
+                // In a finally, and NonCancellable: an attempt that happened must be recorded even when
+                // the fetch threw or was cancelled. Otherwise the schedule sees the old timestamp,
+                // computes "due now" again and retries at once, turning one broken check into a loop.
+                withContext(NonCancellable) { preferencesStore.setLastCheckEpochMillis(clock()) }
+            }
         } finally {
-            // In a finally, and NonCancellable: an attempt that happened must be recorded even when the
-            // fetch threw or was cancelled. Otherwise the schedule sees the old timestamp, computes "due
-            // now" again and retries immediately, turning one broken check into a tight loop.
-            withContext(NonCancellable) { preferencesStore.setLastCheckEpochMillis(clock()) }
+            mutex.unlock()
         }
     }
 
@@ -157,35 +167,42 @@ class UpdateManager(
      * The APK is deleted on the way out, whatever happened: it lives in internal storage but there is no
      * reason to keep a copy of an installer around.
      */
-    suspend fun downloadAndInstall(): Result<Unit> = mutex.withLock {
-        val metadata = _status.value.available
-            ?: return@withLock fail(UpdateError.InvalidMetadata("No update to install"))
-        refreshInstallPermission()
-        if (!installPermission.canInstallPackages()) return@withLock fail(UpdateError.InstallPermissionMissing)
-        val asset = metadata.apkFor(installedApp.supportedAbis)
-            ?: return@withLock fail(UpdateError.NoCompatibleApk(metadata.apks.keys.sorted()))
-
-        log("Downloading ${metadata.versionName} for ${asset.abi}")
-        setPhase(UpdatePhase.Downloading(0, asset.sizeBytes))
-        val apk = downloader.download(asset) { done, total ->
-            setPhase(UpdatePhase.Downloading(done, total))
-        }.getOrElse { error -> return@withLock fail(error.toUpdateError()) }
-
+    suspend fun downloadAndInstall(): Result<Unit> {
+        // Same lock, same reason, plus one of its own: two requests arriving together (a double tap, or
+        // the screen and Home Assistant at once) must not both download the same 60 MB.
+        if (!mutex.tryLock()) return skipped("install")
         try {
-            setPhase(UpdatePhase.Verifying)
-            signatureVerifier.verify(apk, metadata.versionCode)
-                .getOrElse { error -> return@withLock fail(error.toUpdateError()) }
+            val metadata = _status.value.available
+                ?: return fail(UpdateError.InvalidMetadata("No update to install"))
+            refreshInstallPermission()
+            if (!installPermission.canInstallPackages()) return fail(UpdateError.InstallPermissionMissing)
+            val asset = metadata.apkFor(installedApp.supportedAbis)
+                ?: return fail(UpdateError.NoCompatibleApk(metadata.apks.keys.sorted()))
 
-            log("Committing the install session")
-            setPhase(UpdatePhase.Installing)
-            installer.install(apk)
-                .getOrElse { error -> return@withLock fail(error.toUpdateError()) }
-            // Rarely reached: the system kills this process to finish the install.
-            _status.update { it.copy(phase = UpdatePhase.Idle) }
-            Result.success(Unit)
+            log("Downloading ${metadata.versionName} for ${asset.abi}")
+            setPhase(UpdatePhase.Downloading(0, asset.sizeBytes))
+            val apk = downloader.download(asset) { done, total ->
+                setPhase(UpdatePhase.Downloading(done, total))
+            }.getOrElse { error -> return fail(error.toUpdateError()) }
+
+            try {
+                setPhase(UpdatePhase.Verifying)
+                signatureVerifier.verify(apk, metadata.versionCode)
+                    .getOrElse { error -> return fail(error.toUpdateError()) }
+
+                log("Committing the install session")
+                setPhase(UpdatePhase.Installing)
+                installer.install(apk)
+                    .getOrElse { error -> return fail(error.toUpdateError()) }
+                // Rarely reached: the system kills this process to finish the install.
+                _status.update { it.copy(phase = UpdatePhase.Idle) }
+                return Result.success(Unit)
+            } finally {
+                apk.delete()
+                downloader.clear()
+            }
         } finally {
-            apk.delete()
-            downloader.clear()
+            mutex.unlock()
         }
     }
 
@@ -218,7 +235,9 @@ class UpdateManager(
                 val intervalMillis = hours * MILLIS_PER_HOUR
                 while (true) {
                     delay(waitUntilNextCheck(intervalMillis))
-                    checkQuietly()
+                    // A skipped check leaves the timestamp untouched, so it would be "due" again right
+                    // away: wait a little instead of spinning while the install holds the lock.
+                    if (!checkQuietly()) delay(BUSY_RETRY_MILLIS)
                 }
             }
     }
@@ -234,7 +253,20 @@ class UpdateManager(
         return remaining + random.nextLong(intervalMillis / JITTER_FRACTION + 1)
     }
 
-    private suspend fun checkQuietly() = quietly("check") { checkNow() }
+    /** Returns false when the check was skipped because another step held the lock. */
+    private suspend fun checkQuietly(): Boolean {
+        var ran = true
+        quietly("check") {
+            if (checkNow().exceptionOrNull()?.toUpdateError() == UpdateError.AlreadyRunning) ran = false
+        }
+        return ran
+    }
+
+    /** A request that found the manager busy: reported to the caller, but never shown as a failure. */
+    private fun <T> skipped(what: String): Result<T> {
+        log("Update $what skipped: another step is running")
+        return Result.failure(UpdateFailureException(UpdateError.AlreadyRunning))
+    }
 
     /**
      * Runs a step without ever letting a failure escape to the coroutine's uncaught handler.
@@ -267,6 +299,9 @@ class UpdateManager(
 
     private companion object {
         const val MILLIS_PER_HOUR = 60L * 60 * 1000
+
+        /** How long to sit out after finding the manager busy, e.g. an install awaiting confirmation. */
+        const val BUSY_RETRY_MILLIS = 5L * 60 * 1000
 
         /** Up to a tenth of the interval, so tablets on the same interval drift apart. */
         const val JITTER_FRACTION = 10

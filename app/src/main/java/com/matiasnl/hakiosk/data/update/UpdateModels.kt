@@ -101,6 +101,12 @@ sealed interface UpdateError {
     /** "Install unknown apps" is off for this app; the user has to grant it in Settings once. */
     data object InstallPermissionMissing : UpdateError
 
+    /**
+     * Another step (a check, a download, an install waiting on its dialog) was already running, so this
+     * request did nothing. Never replaces the phase of the step that is running.
+     */
+    data object AlreadyRunning : UpdateError
+
     data class InstallFailed(val reason: InstallFailureReason, val message: String) : UpdateError
 }
 
