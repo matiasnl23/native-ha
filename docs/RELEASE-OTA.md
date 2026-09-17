@@ -58,7 +58,6 @@ El workflow publica, junto al APK, un `release-metadata.json`:
   "sizeBytes": 42123456,
   "minSdk": 26,
   "commit": "…",
-  "releaseNotes": "…",
   "releaseUrl": "https://github.com/matiasnl23/native-ha/releases/tag/v1.4.2"
 }
 ```
@@ -83,8 +82,10 @@ configuración, usando el selector de archivos del sistema (Storage Access Frame
 Al importar se avisa explícitamente que el token hay que volver a pegarlo.
 - Agente: `android-ui` (**Opus**: toca persistencia real del usuario, es donde más caro sale un error).
 
-### Etapa 1 — Build de release firmada + GitHub Actions
-Sin cambios visibles en la app.
+### Etapa 1 — Build de release firmada + GitHub Actions ✅
+Sin cambios visibles en la app. Queda pendiente la primera corrida real, que se dispara con el primer
+tag `v*`; todo lo demás está verificado localmente (release sin firmar sin la clave, release firmada
+v2+v3 con una clave descartable, y `versionCode`/`versionName` tomados de las propiedades).
 - `signingConfigs { create("release") }` leyendo la keystore desde variables de entorno y aplicándose
   solo si existen, para que `./gradlew assembleRelease` siga funcionando localmente sin secrets.
   `enableV2Signing` y `enableV3Signing` explícitos, sin depender del default de AGP.
