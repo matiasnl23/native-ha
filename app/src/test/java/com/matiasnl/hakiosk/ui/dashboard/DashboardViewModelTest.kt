@@ -151,6 +151,21 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `edit mode cannot start when the stored layout could not be read, so Listo can't overwrite it`() = runTest {
+        // What the store hands out when the persisted JSON is corrupt or written by a newer version:
+        // an ordinary-looking layout that is only a stand-in for data still sitting on disk.
+        val store = CountingLayoutStore(layoutWithTile("light.kitchen"), isReadable = false)
+        val viewModel = DashboardViewModel(FakeHaRepository(initialEntities = emptyList()), store)
+        backgroundScope.launch(Dispatchers.Main) { viewModel.uiState.collect {} }
+
+        viewModel.enterEditMode()
+        viewModel.doneEditMode()
+
+        assertFalse(viewModel.uiState.value.isEditing)
+        assertEquals(0, store.updates)
+    }
+
+    @Test
     fun `tiles join configured order with live entity state`() = runTest {
         val repository = FakeHaRepository(
             initialEntities = listOf(

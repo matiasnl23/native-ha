@@ -8,6 +8,7 @@ import com.matiasnl.hakiosk.data.dashboard.DashboardGrid
 import com.matiasnl.hakiosk.data.dashboard.DashboardIdProvider
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardLayoutStore
+import com.matiasnl.hakiosk.data.dashboard.StoredDashboardLayout
 import com.matiasnl.hakiosk.data.dashboard.DashboardView
 import com.matiasnl.hakiosk.data.dashboard.DashboardViewPreferencesStore
 import com.matiasnl.hakiosk.data.dashboard.InMemoryDashboardViewPreferencesStore
@@ -302,8 +303,17 @@ class DashboardViewModel(
      * Latest known persisted layout, kept eagerly so [enterEditMode] can snapshot it even before the
      * screen has subscribed to [uiState]. Null until the store's first emission: snapshotting a
      * placeholder instead would let Listo overwrite the user's real layout with an empty one.
+     *
+     * [StoredDashboardLayout.isReadable] guards the second kind of placeholder: a layout that
+     * couldn't be decoded arrives here as an ordinary-looking default layout, indistinguishable from
+     * a real one, while the data it stands in for is still on disk. See [enterEditMode].
      */
-    private val layoutState: StateFlow<DashboardLayout?> = dashboardLayoutStore.layout
+    private val storedState: StateFlow<StoredDashboardLayout?> = dashboardLayoutStore.stored
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Just the layout of [storedState], for everything that only reads or renders it. */
+    private val layoutState: StateFlow<DashboardLayout?> = storedState
+        .map { it?.layout }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** Null until the persisted last view has been read. */
@@ -401,15 +411,19 @@ class DashboardViewModel(
 
     /**
      * Snapshots the current layout into a working copy and enters edit mode on the current view.
-     * No-op until the stored layout has loaded.
+     * No-op until the stored layout has loaded, and while it couldn't be decoded.
      */
     fun enterEditMode() {
         // Re-entering would re-snapshot the stored layout and silently drop the working copy.
         if (editController.state.value.isEditing) return
-        val layout = layoutState.value ?: return
-        val viewId = resolveViewId(layout, selection.value?.viewId) ?: return
+        val stored = storedState.value ?: return
+        // Persisted data exists that we failed to decode, so what's on screen is a default stand-in.
+        // Editing it would end at Listo, which writes the working copy over the stored layout — the
+        // very data the stand-in is covering for. Same refusal as the null check above.
+        if (!stored.isReadable) return
+        val viewId = resolveViewId(stored.layout, selection.value?.viewId) ?: return
         _detailsRequest.value = null
-        editController.enter(layout, viewId)
+        editController.enter(stored.layout, viewId)
     }
 
     /** Discards the working copy without writing anything; stays on the edited view if it still exists. */
