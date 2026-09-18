@@ -41,7 +41,9 @@ object ApkSigningCertificates {
     fun matches(
         apkCertificates: Set<String>,
         installedCertificates: Set<String>,
-        apkHasMultipleSigners: Boolean = false,
+        // No default on purpose: the single-signer branch is the lax one, and defaulting to it would let
+        // a future caller weaken the check by forgetting an argument.
+        apkHasMultipleSigners: Boolean,
     ): Boolean = when {
         apkCertificates.isEmpty() || installedCertificates.isEmpty() -> false
         apkHasMultipleSigners -> installedCertificates.containsAll(apkCertificates)

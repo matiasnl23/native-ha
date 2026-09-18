@@ -76,7 +76,7 @@ class PackageManagerApkSignatureVerifierTest {
         val fromInstalled = ApkSigningCertificates.fingerprints(certificatesOf(installed))
 
         assertTrue("The installed package reported no certificates", fromInstalled.isNotEmpty())
-        assertTrue(ApkSigningCertificates.matches(fromArchive, fromInstalled))
+        assertTrue(ApkSigningCertificates.matches(fromArchive, fromInstalled, apkHasMultipleSigners = false))
     }
 
     @Test

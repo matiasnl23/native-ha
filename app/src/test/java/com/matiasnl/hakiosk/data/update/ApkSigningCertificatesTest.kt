@@ -24,12 +24,18 @@ class ApkSigningCertificatesTest {
     fun `the same signing key matches`() {
         val certificates = fingerprintsOf("release key")
 
-        assertTrue(ApkSigningCertificates.matches(certificates, certificates))
+        assertTrue(ApkSigningCertificates.matches(certificates, certificates, apkHasMultipleSigners = false))
     }
 
     @Test
     fun `a different signing key does not match`() {
-        assertFalse(ApkSigningCertificates.matches(fingerprintsOf("attacker key"), fingerprintsOf("release key")))
+        assertFalse(
+            ApkSigningCertificates.matches(
+                fingerprintsOf("attacker key"),
+                fingerprintsOf("release key"),
+                apkHasMultipleSigners = false,
+            ),
+        )
     }
 
     @Test
@@ -37,14 +43,20 @@ class ApkSigningCertificatesTest {
         val apk = fingerprintsOf("new key", "release key")
         val installed = fingerprintsOf("release key")
 
-        assertTrue(ApkSigningCertificates.matches(apk, installed))
+        assertTrue(ApkSigningCertificates.matches(apk, installed, apkHasMultipleSigners = false))
     }
 
     @Test
     fun `with several signers every one of them must already be installed`() {
         val installed = fingerprintsOf("key one", "key two")
 
-        assertTrue(ApkSigningCertificates.matches(fingerprintsOf("key one", "key two"), installed, true))
+        assertTrue(
+            ApkSigningCertificates.matches(
+                fingerprintsOf("key one", "key two"),
+                installed,
+                apkHasMultipleSigners = true,
+            ),
+        )
     }
 
     @Test
@@ -52,18 +64,22 @@ class ApkSigningCertificatesTest {
         // Laxer than Android itself: it would let an APK signed by the release key plus an attacker's
         // key install over the app. Single-signer rotation still matches on one shared certificate.
         val installed = fingerprintsOf("release key")
+        val apk = fingerprintsOf("release key", "attacker key")
 
-        assertFalse(ApkSigningCertificates.matches(fingerprintsOf("release key", "attacker key"), installed, true))
-        assertTrue(ApkSigningCertificates.matches(fingerprintsOf("release key", "attacker key"), installed, false))
+        assertFalse(ApkSigningCertificates.matches(apk, installed, apkHasMultipleSigners = true))
+        assertTrue(ApkSigningCertificates.matches(apk, installed, apkHasMultipleSigners = false))
     }
 
     @Test
     fun `no certificates on either side fails closed`() {
         val certificates = fingerprintsOf("release key")
 
-        assertFalse(ApkSigningCertificates.matches(emptySet(), certificates))
-        assertFalse(ApkSigningCertificates.matches(certificates, emptySet()))
-        assertFalse(ApkSigningCertificates.matches(emptySet(), emptySet()))
+        // Both branches: the empty check has to come before containsAll, which is true for an empty set.
+        for (multipleSigners in listOf(false, true)) {
+            assertFalse(ApkSigningCertificates.matches(emptySet(), certificates, multipleSigners))
+            assertFalse(ApkSigningCertificates.matches(certificates, emptySet(), multipleSigners))
+            assertFalse(ApkSigningCertificates.matches(emptySet(), emptySet(), multipleSigners))
+        }
     }
 
     private fun fingerprintsOf(vararg keys: String): Set<String> =
