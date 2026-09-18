@@ -500,6 +500,52 @@ class UpdateManagerTest {
     }
 
     @Test
+    fun `a failed check is retried in half an hour, not a day later`() = runTest {
+        metadataSource.result = Result.failure(UpdateFailureException(UpdateError.Network("No connection")))
+        preferences.setCheckIntervalHours(24)
+        val manager = manager()
+
+        manager.start()
+        runCurrent()
+        assertEquals(1, metadataSource.calls)
+
+        // The network comes back: the next attempt must not be a whole day away.
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        advanceTimeBy(31 * MINUTE)
+
+        assertEquals(2, metadataSource.calls)
+        assertTrue(manager.status.value.updateAvailable)
+    }
+
+    @Test
+    fun `the retry backoff never outlasts the configured interval`() = runTest {
+        metadataSource.result = Result.failure(UpdateFailureException(UpdateError.Network("No connection")))
+        preferences.setCheckIntervalHours(1)
+        val manager = manager()
+
+        manager.start()
+        advanceTimeBy(6 * HOUR)
+
+        // Capped at the 1 h interval: uncapped, the doubling would already be past 8 h by now.
+        assertTrue("the retries died out: ${metadataSource.calls} checks in 6 h", metadataSource.calls >= 5)
+    }
+
+    @Test
+    fun `a check that worked goes back to the full interval`() = runTest {
+        metadataSource.result = Result.success(metadata(versionCode = 10002))
+        preferences.setCheckIntervalHours(24)
+        val manager = manager()
+
+        manager.start()
+        runCurrent()
+        assertEquals(1, metadataSource.calls)
+
+        advanceTimeBy(2 * HOUR)
+
+        assertEquals("a successful check must not get the failure backoff", 1, metadataSource.calls)
+    }
+
+    @Test
     fun `turning checks off stops the schedule`() = runTest {
         metadataSource.result = Result.success(metadata(versionCode = 10002))
         preferences.setCheckIntervalHours(1)

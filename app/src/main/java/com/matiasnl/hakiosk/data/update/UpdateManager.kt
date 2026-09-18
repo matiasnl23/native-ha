@@ -247,9 +247,19 @@ class UpdateManager(
                 val intervalMillis = hours * MILLIS_PER_HOUR
                 while (true) {
                     delay(waitUntilNextCheck(intervalMillis))
+                    var outcome = checkQuietly()
+                    // A failed check still records its attempt, so the next one would be a whole
+                    // interval away: at the 24 h default, one moment without network means the tablet
+                    // doesn't update for a day, and on a kiosk that is reconnecting it can look like it
+                    // never updates at all. Retry on a short backoff instead.
+                    var attempt = 0
+                    while (outcome == CheckOutcome.FAILED) {
+                        delay(failureRetryMillis(intervalMillis, attempt++))
+                        outcome = checkQuietly()
+                    }
                     // A skipped check leaves the timestamp untouched, so it would be "due" again right
                     // away: wait a little instead of spinning while the install holds the lock.
-                    if (!checkQuietly()) delay(BUSY_RETRY_MILLIS)
+                    if (outcome == CheckOutcome.SKIPPED) delay(BUSY_RETRY_MILLIS)
                 }
             }
     }
@@ -270,14 +280,29 @@ class UpdateManager(
         return remaining + random.nextLong(jitterBound + 1)
     }
 
-    /** Returns false when the check was skipped because another step held the lock. */
-    private suspend fun checkQuietly(): Boolean {
-        var ran = true
+    /** How a scheduled check ended, which is what decides how long to wait before the next one. */
+    private enum class CheckOutcome { RAN, SKIPPED, FAILED }
+
+    private suspend fun checkQuietly(): CheckOutcome {
+        // Starts as FAILED so a throw swallowed by quietly() gets the short retry too.
+        var outcome = CheckOutcome.FAILED
         quietly("check") {
-            if (checkNow().exceptionOrNull()?.toUpdateError() == UpdateError.AlreadyRunning) ran = false
+            outcome = when (checkNow().exceptionOrNull()?.toUpdateError()) {
+                null -> CheckOutcome.RAN
+                UpdateError.AlreadyRunning -> CheckOutcome.SKIPPED
+                else -> CheckOutcome.FAILED
+            }
         }
-        return ran
+        return outcome
     }
+
+    /**
+     * Wait before retrying a failed check: [FAILED_RETRY_MILLIS] doubling with each attempt, and never
+     * longer than the interval the user configured — past that point the ordinary schedule is the
+     * shorter wait anyway, and a tablet set to check hourly must not end up retrying every 16 h.
+     */
+    private fun failureRetryMillis(intervalMillis: Long, attempt: Int): Long =
+        (FAILED_RETRY_MILLIS shl attempt.coerceIn(0, MAX_FAILURE_BACKOFF_SHIFT)).coerceAtMost(intervalMillis)
 
     /** A request that found the manager busy: reported to the caller, but never shown as a failure. */
     private fun <T> skipped(what: String): Result<T> {
@@ -319,6 +344,12 @@ class UpdateManager(
 
         /** How long to sit out after finding the manager busy, e.g. an install awaiting confirmation. */
         const val BUSY_RETRY_MILLIS = 5L * 60 * 1000
+
+        /** First wait after a check that failed (network down, bad metadata), before doubling. */
+        const val FAILED_RETRY_MILLIS = 30L * 60 * 1000
+
+        /** Caps the doubling at 16 h, which the configured interval usually cuts down further. */
+        const val MAX_FAILURE_BACKOFF_SHIFT = 5
 
         /** Up to a tenth of the interval, so tablets on the same interval drift apart. */
         const val JITTER_FRACTION = 10
