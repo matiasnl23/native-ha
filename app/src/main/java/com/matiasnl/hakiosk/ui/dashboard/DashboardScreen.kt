@@ -1256,6 +1256,63 @@ private fun DashboardPreview() {
     }
 }
 
+/**
+ * What the user actually sees the day the stored layout can't be decoded: "Editar" disabled in the
+ * top bar, and an empty state that says why and points at the import that repairs it — instead of
+ * the ordinary "Todavía no hay botones" with its (now refused) invitation to add some.
+ *
+ * Previewed at two widths on purpose: the explanation is the longest text on the screen, so a
+ * portrait tablet is where it would wrap badly or get cut.
+ */
+@Composable
+private fun UnreadableLayoutPreviewContent() {
+    val grid = DashboardGridSettings(columns = 4, rows = 3)
+    HAKioskTheme {
+        DashboardContent(
+            uiState = DashboardUiState(
+                isLoaded = true,
+                // Exactly what the store hands out in this case: the default layout, one empty view.
+                pages = listOf(previewPage("main", "Principal", grid, emptyList())),
+                connectionState = HaConnectionState.Connected,
+                isLayoutReadable = false,
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onTileClick = {},
+            onTileLongPress = {},
+            onTileBrightnessChange = { _, _ -> },
+            onTileClimateSetpoint = { _, _ -> },
+            onTileClimateTurnOn = {},
+            onPageSettled = {},
+            onViewLinkClick = {},
+            onOpenSettings = {},
+            onEnterEdit = {},
+            onRequestCancelEdit = {},
+            onDoneEdit = {},
+            onMoveTile = { _, _ -> },
+            onSelectEditingView = {},
+            onDragActiveChange = {},
+            onEditTile = {},
+            onAddTile = {},
+            onOpenGridSettings = {},
+            onOpenViews = {},
+            onUserActivity = {},
+            cameraThumbnail = { _, _, _, modifier -> CameraThumbnailContent(image = null, modifier = modifier) },
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 900, heightDp = 600)
+@Composable
+private fun DashboardUnreadableLayoutPreview() {
+    UnreadableLayoutPreviewContent()
+}
+
+@Preview(showBackground = true, widthDp = 400, heightDp = 700)
+@Composable
+private fun DashboardUnreadableLayoutNarrowPreview() {
+    UnreadableLayoutPreviewContent()
+}
+
 @Preview(showBackground = true, widthDp = 900, heightDp = 600)
 @Composable
 private fun DashboardSmartTilesPreview() {
