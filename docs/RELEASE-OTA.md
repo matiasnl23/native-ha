@@ -88,8 +88,17 @@ NAT), y se comprobó que un 304 por ETag **igual consume cuota** cuando no hay a
 
 ## Etapas
 
-### Etapa 0 — Export/import de la configuración
-Habilita la migración sin perder el trabajo hecho en el dashboard. Formato JSON versionado (mismo
+### Etapa 0 — Export/import de la configuración ✅
+Habilita la migración sin perder el trabajo hecho en el dashboard.
+
+Además de lo planeado, la implementación cerró un agujero que no estaba previsto: cuando el layout
+guardado no se puede decodificar (JSON dañado o escrito por una versión más nueva), el store devuelve
+un layout default **a propósito**, para no pisar el disco. Eso hacía que el export escribiera ese
+default como si fuera un backup válido, y que el dashboard invitara a "Agregar botones" — con lo cual
+el primer guardado reemplazaba el layout real, que hasta entonces seguía intacto en disco. Ahora el
+store reporta si lo guardado se pudo leer (`StoredDashboardLayout.isReadable`), el export se niega,
+el modo edición no arranca, y la pantalla explica que hay que importar una copia para recuperarlo.
+El import sigue habilitado a propósito: es el camino para reparar el disco. Formato JSON versionado (mismo
 criterio que `DashboardLayoutJsonMapper`), con validación al importar: un archivo de una versión
 futura o corrupto se rechaza sin tocar lo guardado. Import y export desde la pantalla de
 configuración, usando el selector de archivos del sistema (Storage Access Framework, sin permisos).
