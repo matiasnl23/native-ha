@@ -134,8 +134,26 @@ declarados (el mismo chequeo que hará la app) con firma v2+v3 de la clave de re
   ninguna tablet puede volver a actualizarse sin desinstalar.**
 - Agente: coordinador (toca build y CI, fuera del alcance de los agentes de feature).
 
-### Etapa 2 — Cliente de actualización en la app
+### Etapa 2 — Cliente de actualización en la app ✅
 Kotlin puro y testeable, sin UI.
+
+Tres cosas que la implementación agregó sobre lo planeado, y que la etapa 3 tiene que respetar:
+
+- **La confirmación de instalación es estado, no evento** (`updateManager.pendingConfirmation`). Con un
+  `SharedFlow` se perdía si nadie la estaba escuchando en ese instante, y ese es el caso normal: Home
+  Assistant manda instalar mientras la tablet muestra el dashboard. Hay que consultarla desde
+  **`MainActivity`** y en **un solo lugar** (dos collectors abren dos diálogos), y llamar
+  `confirmationLaunched()` inmediatamente después del `startActivity`, en el mismo bloque.
+- **Un chequeo fallido reintenta a los ~30 minutos**, no al intervalo completo. Sin eso, una tablet sin
+  red a la hora del chequeo diario no se actualizaba hasta 24 h después, sin que nadie entendiera por qué.
+- **Ocupado no es lo mismo que falló**: un pedido que llega con otro paso en curso se descarta con un log
+  y no pisa la fase. La UI se guía por `UpdateStatus.inProgress`; para feedback explícito están las
+  variantes `suspend`, que devuelven `UpdateError.AlreadyRunning`.
+
+Quedan **tests instrumentados escritos pero sin ejecutar** (`PackageManagerApkSignatureVerifierTest`,
+`PackageInstallerApkInstallerTest`). No instalan nada ni tocan la configuración, pero hay que correrlos
+**en la tablet Android 10**: son los que verifican la trampa de `getPackageArchiveInfo` descrita abajo,
+y en una API nueva pasarían en verde sin probar nada.
 - Consulta del metadata, comparación por `versionCode`, descarga con OkHttp (sigue redirects por
   defecto) chequeando espacio libre contra `sizeBytes`, verificación de SHA-256 y de firma.
 - Verificación de firma con `getPackageArchiveInfo` pasando **`GET_SIGNATURES or GET_SIGNING_CERTIFICATES`
