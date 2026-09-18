@@ -100,7 +100,15 @@ class UpdateManager(
         _status.update { it.copy(canInstallPackages = installPermission.canInstallPackages()) }
     }
 
-    /** Fire-and-forget check for the UI's "check now" button and for Home Assistant. */
+    /**
+     * Fire-and-forget check for the UI's "check now" button and for Home Assistant.
+     *
+     * **Reports nothing back.** A request that arrives while another step is running is dropped with a
+     * log line and leaves no error on [status], on purpose: it must not overwrite the phase of the step
+     * that is actually running. A caller that has to tell "busy" from "failed" apart should call
+     * [checkNow] and look for [UpdateError.AlreadyRunning]; a UI should drive its buttons from
+     * [UpdateStatus.inProgress] rather than wait for feedback from here.
+     */
     fun requestCheck() {
         scope.launch { quietly("check") { checkNow() } }
     }
@@ -109,6 +117,10 @@ class UpdateManager(
      * Fire-and-forget download + verify + install. Ignored while another step is running — decided by
      * the lock inside [downloadAndInstall], not by reading the phase first, which two callers arriving
      * together would both pass.
+     *
+     * **Reports nothing back**, same as [requestCheck]: a request dropped as busy leaves [status]
+     * showing the running step. Use [downloadAndInstall] for an explicit result, and
+     * [UpdateStatus.inProgress] to drive a button.
      */
     fun requestInstall() {
         scope.launch { quietly("install") { downloadAndInstall() } }

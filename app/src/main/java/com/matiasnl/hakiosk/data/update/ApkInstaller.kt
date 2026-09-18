@@ -28,6 +28,20 @@ interface ApkInstaller {
      * while it shows the dashboard, and the user tapping "install" and navigating away before the
      * system answers. It also has to be launched from a **visible Activity** — Android 10+ drops
      * activity starts from the background.
+     *
+     * **Collect it in exactly one place.** It is state, so every collector sees it: if `MainActivity`
+     * and the updates screen both collect it, both launch the dialog and the user gets two. Pick
+     * `MainActivity` (it is the one that is always there) and have the screen read [UpdateStatus]
+     * instead.
+     *
+     * **Launch it and clear it in the same block**, like this:
+     * ```
+     * startActivity(confirmation.intent)
+     * updateManager.confirmationLaunched(confirmation)
+     * ```
+     * Not from a later callback or a result handler: the value stays set until it is cleared, so if the
+     * Activity is recreated in between (rotation, configuration change, the system rebuilding the task)
+     * the new collector finds the same confirmation and launches the dialog again.
      */
     val pendingConfirmation: StateFlow<PendingInstallConfirmation?>
 
