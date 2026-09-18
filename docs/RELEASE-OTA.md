@@ -110,6 +110,12 @@ Sin cambios visibles en la app. Verificado de punta a punta con la release **`v1
 compiló, firmó y publicó el APK, el `release-metadata.json` se lee desde la URL estable
 `releases/latest/download/`, y sobre el APK descargado de esa release coinciden el tamaño y el SHA-256
 declarados (el mismo chequeo que hará la app) con firma v2+v3 de la clave de release.
+
+La publicación **por ABI** se probó con la release `v1.0.2`: las cinco entradas de `apks`, el mismo
+`versionCode` en el metadata y dentro de cada APK, y sobre los archivos descargados (armeabi-v7a y
+universal) coinciden tamaño, SHA-256 y **el mismo certificado que `v1.0.1`** — que es lo que permite
+instalar una versión encima de la otra sin desinstalar. El APK de armeabi-v7a pesa 19,0 MB contra los
+60,4 MB del universal.
 - `signingConfigs { create("release") }` leyendo la keystore desde variables de entorno y aplicándose
   solo si existen, para que `./gradlew assembleRelease` siga funcionando localmente sin secrets.
   `enableV2Signing` y `enableV3Signing` explícitos, sin depender del default de AGP.
